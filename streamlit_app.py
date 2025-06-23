@@ -572,4 +572,4 @@ def generate_comprehensive_pdf_report(project_title, logo_file, combined_df, iss
         
         for severity, issue_list, title in [('high', high_issues, "🔴 HIGH PRIORITY ISSUES"),
                                            ('medium', medium_issues, "🟡 MEDIUM PRIORITY ISSUES"),
-                                           ('low', low_issues, "🔵 LOW
+                                           ('low', low_issues, "🔵 LOW PRIORITY ISSUES")
