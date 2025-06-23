@@ -1003,13 +1003,6 @@ if uploaded_files:
                     plt.xticks(rotation=45)
                     plt.tight_layout()
                     st.pyplot(fig2)
-    
-            # Generate relevant diagnostic reference based on detected issues
-            if issues:
-                st.subheader("Relevant Diagnostic Reference")
-                st.markdown("*Based on issues detected in your system data*")
-                
-                diagnostic_ref = generate_diagnostic_reference(issues)
                 
                 for category, problems in diagnostic_ref.items():
                     st.markdown(f"### 🔧 **{category}**")
