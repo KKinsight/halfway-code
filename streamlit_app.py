@@ -830,17 +830,14 @@ if uploaded_files:
                 # Comfort Results
                 comfort_results = check_comfort_conditions(df, headers, mapping)
 
-                st.markdown("## 🏠 Indoor Comfort Check")
-                if comfort_results:
-                    for result in comfort_results:
-                        if result["type"] == "Relative Humidity":
-                            st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - "
-                                     f"{'✅ Within ideal range (≤60%)' if result['compliant'] else f'⚠️ {result['percent_over']:.1f}% of values above 60%'}")
-                        elif result["type"] == "Indoor Temperature":
-                            st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - "
-                                     f"{'✅ Within ideal range (70–75°F)' if result['compliant'] else f'⚠️ {result['percent_outside']:.1f}% of values outside 70–75°F'}")
-                else:
-                    st.info("No relative humidity or indoor temperature columns detected in this file.")
+                if result["type"] == "Relative Humidity":
+                    msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
+                else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
+                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
+                elif result["type"] == "Indoor Temperature":
+                    msg = ('✅ Within ideal range (70–75°F)' if result['compliant'] 
+                else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70–75°F')
+                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
                 
                 # Display issues
                 for issue in issues:
