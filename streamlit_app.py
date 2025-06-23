@@ -826,18 +826,6 @@ if uploaded_files:
                     st.metric("🔵 Low Priority", low_count)
                 
                 st.markdown("---")
-
-                # Comfort Results
-                comfort_results = check_comfort_conditions(df, headers, mapping)
-
-                if result["type"] == "Relative Humidity":
-                    msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
-                else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
-                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
-                elif result["type"] == "Indoor Temperature":
-                    msg = ('✅ Within ideal range (70–75°F)' if result['compliant'] 
-                else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70–75°F')
-                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
                 
                 # Display issues
                 for issue in issues:
