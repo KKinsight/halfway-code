@@ -1004,20 +1004,6 @@ if uploaded_files:
                     plt.tight_layout()
                     st.pyplot(fig2)
                 
-                for category, problems in diagnostic_ref.items():
-                    st.markdown(f"### 🔧 **{category}**")
-                    
-                    for problem_name, details in problems.items():
-                        with st.expander(problem_name):
-                            st.markdown(f"**Symptoms:** {details['symptoms']}")
-                            st.markdown(f"**Causes:** {details['causes']}")
-                            st.markdown("**Diagnostic Steps:**")
-                            for step in details['diagnostics']:
-                                st.markdown(f"• {step}")
-                            st.markdown("**Solutions:**")
-                            for solution in details['solutions']:
-                                st.markdown(f"• {solution}")
-    
             # Enhanced Download report as PDF
             st.subheader("📄 Generate Professional Report")
             
