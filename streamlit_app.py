@@ -60,7 +60,7 @@ def parse_headers_enhanced(headers):
             mapping['indoorTemps'].append(i)
         
         # Enhanced pressure detection
-        elif any(keyword in header_lower for keyword in ['1sucpr1', , 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
+        elif any(keyword in header_lower for keyword in ['1sucpr1', 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
              (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['suctionPressures'].append(i)
         
