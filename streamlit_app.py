@@ -652,7 +652,6 @@ if uploaded_files:
             
             # Create time series plots for this file
             plots = create_time_series_plots(df, headers, mapping)
-            all_plots.extend(plots)
             
             # Analyze issues for this file
             issues = analyze_hvac_data_enhanced(df, headers, mapping)
