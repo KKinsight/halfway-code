@@ -609,6 +609,8 @@ if uploaded_files:
             # Analyze each file
             headers = df.columns.tolist()
             mapping = parse_headers_enhanced(headers)
+
+            ## Claude cut off
             
             # Create datetime column
             df = create_datetime_column(df, mapping)
