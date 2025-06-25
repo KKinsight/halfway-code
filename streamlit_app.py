@@ -52,7 +52,7 @@ def parse_headers_enhanced(headers):
             mapping['time'] = i
         
         # Relative Humidity detection
-        elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
+        elif any(keyword in header_lower for keyword in ['oa rh','rel hum', 'rel. hum', 'relative humidity', 'rh']):
             mapping['relativeHumidity'].append(i)
         
         # Indoor Temperature detection
@@ -60,19 +60,19 @@ def parse_headers_enhanced(headers):
             mapping['indoorTemps'].append(i)
         
         # Enhanced pressure detection
-        elif any(keyword in header_lower for keyword in ['sucpr', 'suc pr', 'suction pr', 'suction_pr']) or \
+        elif any(keyword in header_lower for keyword in ['1sucpr1', , 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
              (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['suctionPressures'].append(i)
         
-        elif any(keyword in header_lower for keyword in ['dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr']) or \
+        elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr']) or \
              (('discharge' in header_lower or 'head' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['dischargePressures'].append(i)
         
         # Enhanced temperature detection
-        elif any(keyword in header_lower for keyword in ['suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
+        elif any(keyword in header_lower for keyword in ['1suctemp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
             mapping['suctionTemps'].append(i)
         
-        elif any(keyword in header_lower for keyword in ['sat ', 'supply air', 'supply_air', 'discharge temp']):
+        elif any(keyword in header_lower for keyword in ['sat', 'supply air', 'supply_air', 'discharge temp']):
             mapping['supplyAirTemps'].append(i)
         
         elif any(keyword in header_lower for keyword in ['dischg', 'dis chg', 'discharge']) and 'temp' in header_lower:
@@ -94,25 +94,39 @@ def parse_headers_enhanced(headers):
     
     return mapping
 
-def create_datetime_column(df, mapping):
-    """Create a datetime column from date/time or datetime columns"""
+def create_datetime2_column(df, mapping):
+    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     try:
         if mapping['datetime'] is not None:
             # Use existing datetime column
             df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
         elif mapping['date'] is not None and mapping['time'] is not None:
-            # Combine date and time columns
+            # Preprocess date if in '31-May' format
             date_col = df.iloc[:, mapping['date']].astype(str)
+            # Check for '31-May' pattern (day-month)
+            if any('-' in s and len(s.split('-')) == 2 and s.split('-')[0].isdigit() for s in date_col):
+                # Convert to '2024-05-31' (assuming current year)
+                date_col = date_col.apply(
+                    lambda x: f'2024-{x.split("-")[1]}-{x.split("-")[0]}'
+                    if '-' in x and x.split('-')[0].isdigit()
+                    else x
+                )
             time_col = df.iloc[:, mapping['time']].astype(str)
             datetime_str = date_col + ' ' + time_col
             df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
         elif mapping['date'] is not None:
-            # Use date column only
-            df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['date']], errors='coerce')
+            # Preprocess date if in '31-May' format
+            date_col = df.iloc[:, mapping['date']].astype(str)
+            if any('-' in s and len(s.split('-')) == 2 and s.split('-')[0].isdigit() for s in date_col):
+                date_col = date_col.apply(
+                    lambda x: f'2024-{x.split("-")[1]}-{x.split("-")[0]}'
+                    if '-' in x and x.split('-')[0].isdigit()
+                    else x
+                )
+            df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
         else:
             # Create sequential index as fallback
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-        
         return df
     except Exception as e:
         st.warning(f"Could not parse datetime: {e}. Using sequential index.")
@@ -131,7 +145,7 @@ def check_comfort_conditions(df, headers, mapping):
             percent_over = (above_60 / len(humidity_data)) * 100
             avg_humidity = humidity_data.mean()
             results.append({
-                'type': 'Relative Humidity',
+                'type': 'Outdoor Relative Humidity',
                 'column': headers[idx],
                 'average': avg_humidity,
                 'percent_over': percent_over,
@@ -458,6 +472,24 @@ def read_csv_with_encoding(uploaded_file):
     df = pd.read_csv(StringIO(content))
     return df, content
 
+def get_legend_label(header):
+    """Map short header names to descriptive labels for plotting."""
+    header_lower = str(header).strip().lower()
+    if 'sat' == header_lower:
+        return 'Supply Air Temp'
+    elif 'oat' == header_lower:
+        return 'Outdoor Air Temp'
+    elif 'oa rh' in header_lower or 'oa_rh' in header_lower:
+        return 'Outside Air Relative Humidity'
+    elif '1sucpr1' in header_lower:
+        return 'Suction Pressure 1'
+    elif '1dischg1' in header_lower:
+        return 'Discharge Pressure'
+    elif '1suctemp1' in header_lower:
+        return 'Suction Temp 1'
+    else:
+        return header  # Fallback to original header
+
 def create_time_series_plots(df, headers, mapping):
     """Create temperature vs time and pressure vs time plots"""
     plots = []
@@ -474,11 +506,10 @@ def create_time_series_plots(df, headers, mapping):
         for idx in temp_indices[:6]:  # Limit to 6 columns for readability
             temp_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
             valid_mask = ~temp_data.isna() & ~df['parsed_datetime'].isna()
-            
             if valid_mask.sum() > 0:
                 ax.plot(df.loc[valid_mask, 'parsed_datetime'], 
                        temp_data[valid_mask], 
-                       label=headers[idx], 
+                       label=get_legend_label(headers[idx]),
                        marker='o', 
                        markersize=2,
                        linewidth=1)
@@ -488,49 +519,39 @@ def create_time_series_plots(df, headers, mapping):
         ax.set_title('Temperature vs Time')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
-        
-        # Format x-axis
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
-        
         plots.append(('Temperature vs Time', fig))
     
     # Pressure vs Time Plot
     pressure_indices = mapping['suctionPressures'] + mapping['dischargePressures']
-    
     if pressure_indices and 'parsed_datetime' in df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        
-        for idx in pressure_indices[:6]:  # Limit to 6 columns for readability
+        for idx in pressure_indices[:6]:
             pressure_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
             valid_mask = ~pressure_data.isna() & ~df['parsed_datetime'].isna()
-            
             if valid_mask.sum() > 0:
                 ax.plot(df.loc[valid_mask, 'parsed_datetime'], 
                        pressure_data[valid_mask], 
-                       label=headers[idx], 
+                       label=get_legend_label(headers[idx]),
                        marker='o', 
                        markersize=2,
                        linewidth=1)
-        
         ax.set_xlabel('Time')
         ax.set_ylabel('Pressure (PSI)')
         ax.set_title('Pressure vs Time')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
-        
-        # Format x-axis
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
-        
         plots.append(('Pressure vs Time', fig))
     
     return plots
-
+    
 # --- Streamlit App ---
 st.set_page_config(page_title="Enhanced HVAC Data Analysis", layout="wide")
 
