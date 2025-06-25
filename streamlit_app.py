@@ -94,7 +94,7 @@ def parse_headers_enhanced(headers):
     
     return mapping
 
-def create_datetime2_column(df, mapping):
+def create_datetime_column(df, mapping):
     """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     try:
         if mapping['datetime'] is not None:
