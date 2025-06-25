@@ -624,9 +624,9 @@ if uploaded_files:
                                else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
                         st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
 
-            except Exception as e:
-                st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
-                continue
+        except Exception as e:
+            st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
+            continue
 
         # Display all time series plots
         if all_plots:
