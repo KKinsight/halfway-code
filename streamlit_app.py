@@ -611,6 +611,12 @@ if uploaded_files:
             else:
                 combined_df = None
                 combined_headers = []
+
+            # Add this block to define combined_mapping
+            if combined_df is not None:
+                combined_mapping = parse_headers_enhanced(combined_headers)
+            else:
+                combined_mapping = {}
             
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
