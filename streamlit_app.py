@@ -805,16 +805,20 @@ if uploaded_files:
                             mime="text/plain"
                         )
             
-    with col2:
-        st.info(
-            "📋 **Combined PDF Report Includes:**\n"
-            "- Executive Summary for All Data\n"
-            "- Unified Issue Analysis\n"
-            "- Consolidated Recommendations\n"
-            "- Combined Data Statistics\n"
-            "- Source File Information\n"
-            "- Professional Formatting"
-        )
+        with col2:
+            st.info(
+                "📋 **Combined PDF Report Includes:**\n"
+                "- Executive Summary for All Data\n"
+                "- Unified Issue Analysis\n"
+                "- Consolidated Recommendations\n"
+                "- Combined Data Statistics\n"
+                "- Source File Information\n"
+                "- Professional Formatting"
+            )
+
+    except Exception as e:
+            st.error(f"File {uploaded_file.name} could not be processed: {e}")
+
 else:
     st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
     st.markdown("### 📋 **Expected Data Format**")
