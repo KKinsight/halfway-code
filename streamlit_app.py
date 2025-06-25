@@ -602,11 +602,11 @@ if uploaded_files:
             
             # Create datetime column
             df = create_datetime_column(df, mapping)
-            if len(dataframes) == 1:
-                combined_df = dataframes[0]
+            if len(all_dataframes) == 1:
+                combined_df = all_dataframes[0]
                 combined_headers = list(combined_df.columns)
-            elif len(dataframes) > 1:
-                combined_df = pd.concat(dataframes, ignore_index=True)
+            elif len(all_dataframes) > 1:
+                combined_df = pd.concat(all_dataframes, ignore_index=True)
                 combined_headers = list(combined_df.columns)
             else:
                 combined_df = None
