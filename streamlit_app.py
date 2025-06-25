@@ -816,12 +816,12 @@ if uploaded_files:
                     "- Professional Formatting"
                 )
     
-    else:
-        st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
+else:
+    st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
         
-        st.markdown("### 📋 **Expected Data Format**")
-        st.markdown("""
-        Your CSV and XLSX files should contain columns with names that include:
+    st.markdown("### 📋 **Expected Data Format**")
+    st.markdown("""
+    Your CSV and XLSX files should contain columns with names that include:
         
         - **Date/Time** information (e.g., 'Date', 'Timestamp')
         - **Suction Pressure** data (e.g., 'Suction Pressure', 'Suction PSI')
