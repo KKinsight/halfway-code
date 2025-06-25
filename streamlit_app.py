@@ -641,9 +641,9 @@ if uploaded_files:
                                else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
                         st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                     elif result["type"] == "Indoor Temperature":
-                msg = ('✅ Within ideal range (70–75°F)' if result['compliant']
-                           else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
-                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
+                        msg = ('✅ Within ideal range (70–75°F)' if result['compliant']
+                               else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
+                        st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
         
         # Single set of time series plots using combined data
         st.markdown("## 📈 Combined Time Series Analysis")
