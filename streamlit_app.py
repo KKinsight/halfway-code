@@ -620,4 +620,208 @@ if uploaded_files:
                                else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
                         st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                     elif result["type"] == "Indoor Temperature":
-                        msg = ('✅ Within ideal range (70–75
+                        msg = ('✅ Within ideal range (70–75°F)' if result['compliant']
+                               else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
+                        st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
+
+            except Exception as e:
+                st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
+                continue
+
+        # Display all time series plots
+        if all_plots:
+            st.subheader("📈 Time Series Analysis")
+            for plot_title, fig in all_plots:
+                st.pyplot(fig)
+                plt.close(fig)  # Close figure to free memory
+
+        # Combine all dataframes
+        if all_dataframes:
+            combined_df = pd.concat(all_dataframes, ignore_index=True)
+            
+            st.subheader("📊 Combined Data Overview")
+            st.dataframe(combined_df.head(10))
+            
+            # Show basic statistics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Data Points", len(combined_df))
+            with col2:
+                st.metric("Number of Files", len(all_dataframes))
+            with col3:
+                numeric_cols = combined_df.select_dtypes(include=[np.number]).columns
+                st.metric("Numeric Parameters", len(numeric_cols))
+
+            # Combined Analysis Results
+            st.subheader("🔧 Combined HVAC Diagnostic Analysis")
+            
+            if all_issues:
+                # Show summary counts
+                high_count = len([i for i in all_issues if i['severity'] == 'high'])
+                medium_count = len([i for i in all_issues if i['severity'] == 'medium'])
+                low_count = len([i for i in all_issues if i['severity'] == 'low'])
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("🔴 High Priority", high_count)
+                with col2:
+                    st.metric("🟡 Medium Priority", medium_count)
+                with col3:
+                    st.metric("🔵 Low Priority", low_count)
+
+                # Display all issues grouped by severity
+                if high_count > 0:
+                    st.markdown("### 🔴 High Priority Issues")
+                    for issue in [i for i in all_issues if i['severity'] == 'high']:
+                        st.error(f"**{issue['message']}**")
+                        st.markdown(f"**Why this matters:** {issue['explanation']}")
+                        st.markdown("**Recommended actions:**")
+                        for suggestion in issue['suggestions']:
+                            st.markdown(f"• {suggestion}")
+                        st.markdown("---")
+
+                if medium_count > 0:
+                    st.markdown("### 🟡 Medium Priority Issues")
+                    for issue in [i for i in all_issues if i['severity'] == 'medium']:
+                        st.warning(f"**{issue['message']}**")
+                        st.markdown(f"**Why this matters:** {issue['explanation']}")
+                        st.markdown("**Recommended actions:**")
+                        for suggestion in issue['suggestions']:
+                            st.markdown(f"• {suggestion}")
+                        st.markdown("---")
+
+                if low_count > 0:
+                    st.markdown("### 🔵 Low Priority Issues")
+                    for issue in [i for i in all_issues if i['severity'] == 'low']:
+                        st.info(f"**{issue['message']}**")
+                        st.markdown(f"**Why this matters:** {issue['explanation']}")
+                        st.markdown("**Recommended actions:**")
+                        for suggestion in issue['suggestions']:
+                            st.markdown(f"• {suggestion}")
+                        st.markdown("---")
+            else:
+                st.success("✅ No immediate HVAC issues detected in the combined data analysis.")
+
+            # Generate PDF Report Section
+            st.subheader("📄 Generate Professional Report")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📄 Generate PDF Report", type="primary"):
+                    try:
+                        pdf_buffer = generate_pdf_report(
+                            project_title=project_title,
+                            logo_file=logo_file,
+                            issues=all_issues,
+                            df_summary=combined_df
+                        )
+                        
+                        if pdf_buffer:
+                            st.download_button(
+                                label="📥 Download PDF Report",
+                                data=pdf_buffer,
+                                file_name=f"{project_title.replace(' ', '_')}_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                                mime="application/pdf"
+                            )
+                        else:
+                            raise Exception("PDF generation failed")
+                            
+                    except Exception as e:
+                        st.error(f"Error generating PDF: {str(e)}")
+                        st.info("PDF generation requires additional libraries. Falling back to text report.")
+                        
+                        # Fallback to text report
+                        report_lines = [
+                            f"{project_title}",
+                            "=" * len(project_title),
+                            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                            "",
+                            "HVAC DIAGNOSTIC ANALYSIS REPORT",
+                            "=" * 50,
+                            "",
+                            "SYSTEM DATA ANALYSIS FINDINGS:",
+                            ""
+                        ]
+                        
+                        if all_issues:
+                            high_issues = [i for i in all_issues if i.get('severity') == 'high']
+                            medium_issues = [i for i in all_issues if i.get('severity') == 'medium']
+                            low_issues = [i for i in all_issues if i.get('severity') == 'low']
+                            
+                            if high_issues:
+                                report_lines.extend(["HIGH PRIORITY ISSUES:", "-" * 20])
+                                for issue in high_issues:
+                                    report_lines.extend([
+                                        f"ISSUE: {issue['message']}",
+                                        f"EXPLANATION: {issue['explanation']}",
+                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                        ""
+                                    ])
+                            
+                            if medium_issues:
+                                report_lines.extend(["MEDIUM PRIORITY ISSUES:", "-" * 22])
+                                for issue in medium_issues:
+                                    report_lines.extend([
+                                        f"ISSUE: {issue['message']}",
+                                        f"EXPLANATION: {issue['explanation']}",
+                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                        ""
+                                    ])
+                            
+                            if low_issues:
+                                report_lines.extend(["LOW PRIORITY ISSUES:", "-" * 19])
+                                for issue in low_issues:
+                                    report_lines.extend([
+                                        f"ISSUE: {issue['message']}",
+                                        f"EXPLANATION: {issue['explanation']}",
+                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                        ""
+                                    ])
+                        else:
+                            report_lines.append("✅ No immediate HVAC issues detected in data analysis.")
+                        
+                        report_lines.extend([
+                            "",
+                            "=" * 50,
+                            f"Report generated by {project_title} Analysis System",
+                            "For technical support, please contact your HVAC service provider."
+                        ])
+                        
+                        report = "\n".join(report_lines)
+                        
+                        st.download_button(
+                            "📄 Download Text Report (Fallback)",
+                            report,
+                            file_name=f"{project_title.replace(' ', '_')}_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                            mime="text/plain"
+                        )
+            
+            with col2:
+                st.info(
+                    "📋 **PDF Report Includes:**\n"
+                    "- Executive Summary\n"
+                    "- Detailed Issue Analysis\n"
+                    "- Recommendations\n"
+                    "- Data Statistics\n"
+                    "- Professional Formatting"
+                )
+
+else:
+    st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
+    
+    st.markdown("### 📋 **Expected Data Format**")
+    st.markdown("""
+    Your CSV and XLSX files should contain columns with names that include:
+    
+    - **Date/Time** information (e.g., 'Date', 'Timestamp')
+    - **Suction Pressure** data (e.g., 'Suction Pressure', 'Suction PSI')
+    - **Discharge Pressure** data (e.g., 'Discharge Pressure', 'Head Pressure')
+    - **Temperature** readings (e.g., 'Suction Temp', 'Supply Air Temp', 'Discharge Temp')
+    
+    The system will automatically detect and analyze these parameters based on column names.
+    """)
+
+# Footer
+st.markdown("---")
+st.markdown("*Enhanced HVAC Data Analysis System - Professional diagnostic reporting for HVAC systems*")
