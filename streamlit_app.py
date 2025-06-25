@@ -98,34 +98,30 @@ def create_datetime_column(df, mapping):
     """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     try:
         if mapping['datetime'] is not None:
-            # Use existing datetime column
             df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
         elif mapping['date'] is not None and mapping['time'] is not None:
-            # Preprocess date if in '31-May' format
-            date_col = df.iloc[:, mapping['date']].astype(str)
-            # Check for '31-May' pattern (day-month)
-            if any('-' in s and len(s.split('-')) == 2 and s.split('-')[0].isdigit() for s in date_col):
-                # Convert to '2024-05-31' (assuming current year)
-                date_col = date_col.apply(
-                    lambda x: f'2024-{x.split("-")[1]}-{x.split("-")[0]}'
-                    if '-' in x and x.split('-')[0].isdigit()
-                    else x
-                )
-            time_col = df.iloc[:, mapping['time']].astype(str)
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
+            time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
+
+            # Convert '31-May' to '2024-05-31'
+            date_col = date_col.apply(
+                lambda x: f"2024-{x.split('-')[1]}-{x.split('-')[0]}"
+                if '-' in x and x.split('-')[0].isdigit()
+                else x
+            )
+
             datetime_str = date_col + ' ' + time_col
             df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
         elif mapping['date'] is not None:
-            # Preprocess date if in '31-May' format
-            date_col = df.iloc[:, mapping['date']].astype(str)
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             if any('-' in s and len(s.split('-')) == 2 and s.split('-')[0].isdigit() for s in date_col):
                 date_col = date_col.apply(
-                    lambda x: f'2024-{x.split("-")[1]}-{x.split("-")[0]}'
+                    lambda x: f"2024-{x.split('-')[1]}-{x.split('-')[0]}"
                     if '-' in x and x.split('-')[0].isdigit()
                     else x
                 )
             df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
         else:
-            # Create sequential index as fallback
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
     except Exception as e:
