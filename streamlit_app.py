@@ -41,7 +41,7 @@ def parse_headers_enhanced(headers):
     
     for i, h in enumerate(headers):
         h_clean = str(h).strip()
-        header_lower = h_clean.lower()  # Fixed: define header_lower properly
+        header_lower = h_clean.lower()
        
         # Date/Time detection first
         if any(keyword in header_lower for keyword in ['timestamp', 'datetime']):
@@ -64,12 +64,12 @@ def parse_headers_enhanced(headers):
              (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['suctionPressures'].append(i)
         
-        elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr']) or \
-             (('discharge' in header_lower or 'head' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
+        elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr', '1cond1', '1headpr1']) or \
+             (('discharge' in header_lower or 'head' in header_lower or 'cond' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['dischargePressures'].append(i)
         
         # Enhanced temperature detection
-        elif any(keyword in header_lower for keyword in ['1suctemp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
+        elif any(keyword in header_lower for keyword in ['1suctmp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
             mapping['suctionTemps'].append(i)
         
         elif any(keyword in header_lower for keyword in ['sat', 'supply air', 'supply_air', 'discharge temp']):
@@ -104,22 +104,30 @@ def create_datetime_column(df, mapping):
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
 
             # Convert '31-May' to '2024-05-31'
-            date_col = date_col.apply(
-                lambda x: f"2024-{x.split('-')[1]}-{x.split('-')[0]}"
-                if '-' in x and x.split('-')[0].isdigit()
-                else x
-            )
+            def convert_date(date_str):
+                if pd.isna(date_str) or date_str == 'nan':
+                    return None
+                if '-' in date_str and len(date_str.split('-')) == 2:
+                    parts = date_str.split('-')
+                    if parts[0].isdigit():
+                        day = parts[0]
+                        month = parts[1]
+                        # Convert month name to number
+                        month_map = {
+                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                        }
+                        month_num = month_map.get(month.lower()[:3], month)
+                        return f"2024-{month_num}-{day.zfill(2)}"
+                return date_str
 
+            date_col = date_col.apply(convert_date)
             datetime_str = date_col + ' ' + time_col
             df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
         elif mapping['date'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            if any('-' in s and len(s.split('-')) == 2 and s.split('-')[0].isdigit() for s in date_col):
-                date_col = date_col.apply(
-                    lambda x: f"2024-{x.split('-')[1]}-{x.split('-')[0]}"
-                    if '-' in x and x.split('-')[0].isdigit()
-                    else x
-                )
+            date_col = date_col.apply(lambda x: convert_date(x) if callable(convert_date) else x)
             df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
         else:
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
@@ -257,24 +265,6 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check thermostat settings", "Verify cooling load", "Inspect damper operation", "Check for overcooling"],
                     "issue_type": "control_system"
                 })
-    
-    # Check temperature differentials between suction and supply air
-    if mapping['suctionTemps'] and mapping['supplyAirTemps']:
-        for suc_idx in mapping['suctionTemps']:
-            for sat_idx in mapping['supplyAirTemps']:
-                suc_data = pd.to_numeric(df.iloc[:, suc_idx], errors='coerce').dropna()
-                sat_data = pd.to_numeric(df.iloc[:, sat_idx], errors='coerce').dropna()
-                
-                if len(suc_data) > 0 and len(sat_data) > 0:
-                    temp_diff = abs(sat_data.mean() - suc_data.mean())
-                    if temp_diff < 15:
-                        issues.append({
-                            'message': f'Low temperature differential between {headers[suc_idx]} and {headers[sat_idx]} ({temp_diff:.1f}°F)',
-                            'severity': 'medium',
-                            'explanation': 'Low temperature differential may indicate poor heat transfer or airflow issues',
-                            'suggestions': ['Check evaporator coil', 'Verify airflow rates', 'Inspect refrigerant levels'],
-                            'issue_type': 'heat_transfer'
-                        })
     
     return issues
 
@@ -481,8 +471,12 @@ def get_legend_label(header):
         return 'Suction Pressure 1'
     elif '1dischg1' in header_lower:
         return 'Discharge Pressure'
-    elif '1suctemp1' in header_lower:
+    elif '1suctmp1' in header_lower:
         return 'Suction Temp 1'
+    elif '1headpr1' in header_lower:
+        return 'Head Pressure 1'
+    elif '1cond1' in header_lower:
+        return 'Condenser Pressure 1'
     else:
         return header  # Fallback to original header
 
@@ -491,15 +485,15 @@ def create_time_series_plots(df, headers, mapping):
     plots = []
     
     # Temperature vs Time Plot
-    temp_cols = []
     temp_indices = (mapping['suctionTemps'] + mapping['supplyAirTemps'] + 
                    mapping['dischargeTemps'] + mapping['outdoorAirTemps'] + 
                    mapping['indoorTemps'])
     
     if temp_indices and 'parsed_datetime' in df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
+        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
         
-        for idx in temp_indices[:6]:  # Limit to 6 columns for readability
+        for idx_num, idx in enumerate(temp_indices[:6]):  # Limit to 6 columns for readability
             temp_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
             valid_mask = ~temp_data.isna() & ~df['parsed_datetime'].isna()
             if valid_mask.sum() > 0:
@@ -508,15 +502,19 @@ def create_time_series_plots(df, headers, mapping):
                        label=get_legend_label(headers[idx]),
                        marker='o', 
                        markersize=2,
-                       linewidth=1)
+                       linewidth=1,
+                       color=colors[idx_num % len(colors)])
         
         ax.set_xlabel('Time')
         ax.set_ylabel('Temperature (°F)')
         ax.set_title('Temperature vs Time')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-        ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
+        
+        # Format x-axis
+        if len(df) > 0:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
         plots.append(('Temperature vs Time', fig))
@@ -525,7 +523,9 @@ def create_time_series_plots(df, headers, mapping):
     pressure_indices = mapping['suctionPressures'] + mapping['dischargePressures']
     if pressure_indices and 'parsed_datetime' in df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        for idx in pressure_indices[:6]:
+        colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'purple', 'brown']
+        
+        for idx_num, idx in enumerate(pressure_indices[:6]):
             pressure_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
             valid_mask = ~pressure_data.isna() & ~df['parsed_datetime'].isna()
             if valid_mask.sum() > 0:
@@ -534,14 +534,19 @@ def create_time_series_plots(df, headers, mapping):
                        label=get_legend_label(headers[idx]),
                        marker='o', 
                        markersize=2,
-                       linewidth=1)
+                       linewidth=1,
+                       color=colors[idx_num % len(colors)])
+        
         ax.set_xlabel('Time')
         ax.set_ylabel('Pressure (PSI)')
         ax.set_title('Pressure vs Time')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-        ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
+        
+        # Format x-axis
+        if len(df) > 0:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
         plots.append(('Pressure vs Time', fig))
@@ -574,8 +579,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     all_dataframes = []
     all_issues = []
-    combined_issues = all_issues
-    all_plots = []
+    all_file_info = []
     
     # Process each file
     for uploaded_file in uploaded_files:
@@ -584,14 +588,23 @@ if uploaded_files:
             
             if file_extension in ['xlsx', 'xls']:
                 df = pd.read_excel(uploaded_file)
-                st.success(f"✅ Excel file '{uploaded_file.name}' successfully read")
+                st.success(f"✅ Excel file '{uploaded_file.name}' successfully read with {len(df)} rows")
             else:
                 df, content = read_csv_with_encoding(uploaded_file)
-                st.success(f"✅ CSV file '{uploaded_file.name}' successfully read")
+                st.success(f"✅ CSV file '{uploaded_file.name}' successfully read with {len(df)} rows")
+            
+            # Clean the data - skip rows that are all NaN or contain header-like content
+            df = df.dropna(how='all')  # Remove completely empty rows
+            
+            # If the first row contains units (like °F, PSI, etc.), remove it
+            if len(df) > 0 and df.iloc[0].astype(str).str.contains('°F|PSI|%|WG', case=False, na=False).any():
+                df = df.iloc[1:].reset_index(drop=True)
+                st.info(f"Removed units row from {uploaded_file.name}")
             
             # Add source file identifier
             df['source_file'] = uploaded_file.name
             all_dataframes.append(df.copy())
+            all_file_info.append({'name': uploaded_file.name, 'df': df})
             
             # Analyze each file
             headers = df.columns.tolist()
