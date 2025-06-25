@@ -602,6 +602,12 @@ if uploaded_files:
             
             # Create datetime column
             df = create_datetime_column(df, mapping)
+            if len(uploaded_files) == 1:
+                combined_df = df  # or dataframes[0] if you use a list
+            elif len(uploaded_files) > 1:
+                combined_df = pd.concat(dataframes, ignore_index=True)
+            else:
+                combined_df = None
             
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
