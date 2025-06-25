@@ -815,7 +815,7 @@ if uploaded_files:
                     "- Source File Information\n"
                     "- Professional Formatting"
                 )
-    
+    )
 else:
     st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
         
