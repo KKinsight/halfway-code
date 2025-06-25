@@ -578,6 +578,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     all_dataframes = []
     all_issues = []
+    combined_issues = all_issues
     all_plots = []
     
     # Process each file
