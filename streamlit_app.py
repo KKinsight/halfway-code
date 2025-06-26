@@ -659,14 +659,15 @@ if uploaded_files:
 
     # Show summary statistics on the main page
     if combined_df is not None:
-        st.markdown("## 📊 Combined Data Summary Statistics")
-        numeric_df = combined_df.select_dtypes(include=[np.number])
-        if not numeric_df.empty:
-            summary_stats = numeric_df.describe().T[['mean', 'min', 'max', 'std']]
-            summary_stats.columns = ['Mean', 'Min', 'Max', 'Std Dev']
-            st.dataframe(summary_stats.style.format("{:.2f}"))
-        else:
-            st.info("No numeric data available for summary statistics.")
+        st.markdown("## 📊 Data Summary Statistics")
+        numeric_df = combined_df.select_dtypes(include=[np.number])
+        if not numeric_df.empty:
+            summary_stats = numeric_df.describe().T[['mean', 'min', 'max', 'std']]
+            summary_stats.columns = ['Mean', 'Min', 'Max', 'Std Dev']
+            summary_stats = summary_stats[~(summary_stats == 0).all(axis=1)]  # Exclude all-zero stats
+            st.dataframe(summary_stats.style.format("{:.2f}"))
+        else:
+            st.info("No numeric data available for summary statistics.")
 
     # Unified Indoor Comfort Check
     if combined_df is not None:
@@ -698,7 +699,7 @@ if uploaded_files:
         combined_mapping = {}
 
     # Single set of time series plots using combined data
-    st.markdown("## 📈 Combined Time Series Analysis")
+    st.markdown("## 📈 Time Series Analysis")
     combined_plots = create_time_series_plots(combined_df, combined_headers, combined_mapping)
     for plot_title, fig in combined_plots:
         st.pyplot(fig)
@@ -757,7 +758,7 @@ if uploaded_files:
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("📄 Generate Combined PDF Report", type="primary"):
+        if st.button("📄 Generate PDF Report", type="primary"):
             try:
                 pdf_buffer = generate_pdf_report(
                     project_title=project_title,
@@ -768,7 +769,7 @@ if uploaded_files:
                 
                 if pdf_buffer:
                     st.download_button(
-                        label="📥 Download Combined PDF Report",
+                        label="📥 Download PDF Report",
                         data=pdf_buffer,
                         file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                         mime="application/pdf"
@@ -782,7 +783,7 @@ if uploaded_files:
                 
                 # Fallback to text report
                 report_lines = [
-                    f"{project_title} - Combined Analysis",
+                    f"{project_title} - Project File Analysis",
                     "=" * (len(project_title) + 20),
                     f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                     f"Files Analyzed: {', '.join([info['name'] for info in all_file_info])}",
@@ -851,7 +852,7 @@ if uploaded_files:
                 report = "\n".join(report_lines)
                 
                 st.download_button(
-                    "📄 Download Combined Text Report",
+                    "📄 Download Text Report",
                     report,
                     file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                     mime="text/plain"
@@ -859,11 +860,11 @@ if uploaded_files:
     
     with col2:
         st.info(
-            "📋 **Combined PDF Report Includes:**\n"
+            "📋 **PDF Report Includes:**\n"
             "- Executive Summary for All Data\n"
             "- Unified Issue Analysis\n"
             "- Consolidated Recommendations\n"
-            "- Combined Data Statistics\n"
+            "- Data Statistics\n"
             "- Source File Information\n"
             "- Professional Formatting"
         )
