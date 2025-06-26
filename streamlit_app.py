@@ -17,7 +17,7 @@ try:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
     REPORTLAB_AVAILABLE = True
 except ImportError:
-    REPORTL            AB_AVAILABLE = False
+    REPORTLAB_AVAILABLE = False
     st.warning("ReportLab not available. PDF generation will be limited to text reports.")
 
 # --- Enhanced Helper Functions ---
