@@ -672,7 +672,7 @@ if uploaded_files:
                     st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                 elif result["type"] == "Indoor Temperature":
                     msg = ('✅ Within ideal range (70-75°F)' if result['compliant']              
-                        else f'⚠️ {result[\'percent_outside\']:.1f}% of values outside 70-75°F range')
+                        else f"⚠️ {result['percent_outside']:.1f}% of values outside 70-75°F range")
                     st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
 
     # Ensure parsed_datetime exists in combined_df
