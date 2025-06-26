@@ -668,14 +668,13 @@ if uploaded_files:
             for result in comfort_results:
                 if result["type"] == "Outdoor Relative Humidity":
                     msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
-                           else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
+                        else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
                     st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                 elif result["type"] == "Indoor Temperature":
-                    msg = ('✅ Within ideal range (70-75°F)' if result['compliant'] 
-                           else f'⚠️ {result['percent_outside']:.1f}% of values outside 70-75°F range')
+                    msg = ('✅ Within ideal range (70-75°F)' if result['compliant']              
+                        else f'⚠️ {result[\'percent_outside\']:.1f}% of values outside 70-75°F range')
                     st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
 
-    
     # Ensure parsed_datetime exists in combined_df
     if combined_df is not None and 'parsed_datetime' not in combined_df.columns:
         combined_mapping = parse_headers_enhanced(combined_headers)
