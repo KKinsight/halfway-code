@@ -52,11 +52,11 @@ def parse_headers_enhanced(headers):
             mapping['time'] = i
         
         # Relative Humidity detection
-        elif any(keyword in header_lower for keyword in ['oa rh','rel hum', 'rel. hum', 'relative humidity', 'rh']):
+        elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
             mapping['relativeHumidity'].append(i)
         
         # Indoor Temperature detection
-        elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'space temp']):
+        elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'spacetemp','space temp','space-temp']):
             mapping['indoorTemps'].append(i)
         
         # Enhanced pressure detection
