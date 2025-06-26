@@ -53,7 +53,9 @@ def parse_headers_enhanced(headers):
         
         # Relative Humidity detection
         elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
-            mapping['relativeHumidity'].append(i)
+            # Skip if "oa rh" or any outside air indicator is in the header
+            if 'oa rh' not in header_lower:
+                mapping['relativeHumidity'].append(i)
         
         # Indoor Temperature detection
         elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'spacetemp','space temp','space-temp']):
