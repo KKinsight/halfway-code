@@ -680,11 +680,11 @@ if uploaded_files:
     
 # Diagnostic block TEMPORARY
     if combined_df is not None:
-        st.write("Combined DataFrame loaded with shape:", combined_df.shape)
-        st.write("Sample of parsed datetime column:")
-        st.write(combined_df[['parsed_datetime']].head())
+        st.write("Combined Dataframe loaded with shape:", combined_df.shape)
+        st.write("Sample of parsed datetime column:")
+        st.write(combined_df[['parsed_datetime']].head())
     else:
-        st.error("❌ No data loaded. Please upload CSV files.")
+        st.error("❌ No data loaded. Please upload CSV files.")
 
 
     # Single set of time series plots using combined data
