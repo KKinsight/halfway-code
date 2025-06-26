@@ -675,7 +675,7 @@ if uploaded_files:
         comfort_results = check_comfort_conditions(combined_df, combined_headers, combined_mapping)
     
         if comfort_results:
-            st.markdown("## 🏠 Indoor Comfort Check (Combined)")
+            st.markdown("## 🏠 Indoor Comfort Check")
             for result in comfort_results:
                 if result["type"] == "Outdoor Relative Humidity":
                     msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
