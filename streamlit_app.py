@@ -642,20 +642,6 @@ if uploaded_files:
             # Analyze issues for this file
             issues = analyze_hvac_data_enhanced(df, headers, mapping)
             all_issues.extend(issues)
-            
-            # Check comfort conditions
-            comfort_results = check_comfort_conditions(df, headers, mapping)
-            if comfort_results:
-                st.markdown("## 🏠 Indoor Comfort Check")
-                for result in comfort_results:
-                    if result["type"] == "Outdoor Relative Humidity":
-                        msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
-                               else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
-                        st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
-                    elif result["type"] == "Indoor Temperature":
-                        msg = ('✅ Within ideal range (70-75°F)' if result['compliant'] 
-                               else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
-                        st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
 
         except Exception as e:
             st.error(f"File {uploaded_file.name} could not be processed: {e}")
@@ -670,6 +656,24 @@ if uploaded_files:
     else:
         combined_df = None
         combined_headers = []
+
+    # Unified Indoor Comfort Check
+    if combined_df is not None:
+        combined_mapping = parse_headers_enhanced(combined_headers)
+        combined_df = create_datetime_column(combined_df, combined_mapping)
+        comfort_results = check_comfort_conditions(combined_df, combined_headers, combined_mapping)
+    
+        if comfort_results:
+            st.markdown("## 🏠 Indoor Comfort Check (Combined)")
+            for result in comfort_results:
+                if result["type"] == "Outdoor Relative Humidity":
+                    msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
+                           else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
+                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
+                elif result["type"] == "Indoor Temperature":
+                    msg = ('✅ Within ideal range (70-75°F)' if result['compliant'] 
+                           else f'⚠️ {result['percent_outside']:.1f}% of values outside 70-75°F range')
+                    st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
 
     
     # Ensure parsed_datetime exists in combined_df
