@@ -664,7 +664,7 @@ if uploaded_files:
         if not numeric_df.empty:
             summary_stats = numeric_df.describe().T[['mean', 'min', 'max', 'std']]
             summary_stats.columns = ['Mean', 'Min', 'Max', 'Std Dev']
-            summary_stats = summary_stats[~(summary_stats == 0).all(axis=1)]  # Exclude all-zero stats
+            summary_stats = summary_stats[~(summary_stats == 0).all(axis=1)]    # Exclude all-zero stats
             st.dataframe(summary_stats.style.format("{:.2f}"))
         else:
             st.info("No numeric data available for summary statistics.")
