@@ -17,7 +17,7 @@ try:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
     REPORTLAB_AVAILABLE = True
 except ImportError:
-    REPORTLAB_AVAILABLE = False
+    REPORTL            AB_AVAILABLE = False
     st.warning("ReportLab not available. PDF generation will be limited to text reports.")
 
 # --- Enhanced Helper Functions ---
@@ -678,9 +678,9 @@ if uploaded_files:
         combined_mapping = {}
 
     
-# ✅ Diagnostic block TEMPORARY
+# Diagnostic block TEMPORARY
     if combined_df is not None:
-        st.write("✅ Combined DataFrame loaded with shape:", combined_df.shape)
+        st.write("Combined DataFrame loaded with shape:", combined_df.shape)
         st.write("Sample of parsed datetime column:")
         st.write(combined_df[['parsed_datetime']].head())
     else:
