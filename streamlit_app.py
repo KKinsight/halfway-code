@@ -408,7 +408,24 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                         f"{numeric_df[col].max():.2f}",
                         f"{numeric_df[col].std():.2f}"
                     ])
-                
+
+            numeric_df = df_summary.select_dtypes(include=[np.number])
+            if not numeric_df.empty:
+                stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev']]
+                for col in numeric_df.columns[:10]:
+                    mean = numeric_df[col].mean()
+                    min_val = numeric_df[col].min()
+                    max_val = numeric_df[col].max()
+                    std_dev = numeric_df[col].std()
+                    if not (mean == 0 and min_val == 0 and max_val == 0 and std_dev == 0):
+                        stats_data.append([
+                            col,
+                                f"{mean:.2f}",
+                                f"{min_val:.2f}",
+                                f"{max_val:.2f}",
+                                f"{std_dev:.2f}"
+                            ])
+  
                 table = Table(stats_data)
                 table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
