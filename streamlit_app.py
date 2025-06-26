@@ -657,6 +657,17 @@ if uploaded_files:
         combined_df = None
         combined_headers = []
 
+    # Show summary statistics on the main page
+    if combined_df is not None:
+        st.markdown("## 📊 Combined Data Summary Statistics")
+        numeric_df = combined_df.select_dtypes(include=[np.number])
+        if not numeric_df.empty:
+            summary_stats = numeric_df.describe().T[['mean', 'min', 'max', 'std']]
+            summary_stats.columns = ['Mean', 'Min', 'Max', 'Std Dev']
+            st.dataframe(summary_stats.style.format("{:.2f}"))
+        else:
+            st.info("No numeric data available for summary statistics.")
+
     # Unified Indoor Comfort Check
     if combined_df is not None:
         combined_mapping = parse_headers_enhanced(combined_headers)
