@@ -610,25 +610,12 @@ if uploaded_files:
             headers = df.columns.tolist()
             mapping = parse_headers_enhanced(headers)
 
-            ## Claude cut off
+          # Analyze each file
+            headers = df.columns.tolist()
+            mapping = parse_headers_enhanced(headers)
             
             # Create datetime column
             df = create_datetime_column(df, mapping)
-            if len(all_dataframes) == 1:
-                combined_df = all_dataframes[0]
-                combined_headers = list(combined_df.columns)
-            elif len(all_dataframes) > 1:
-                combined_df = pd.concat(all_dataframes, ignore_index=True)
-                combined_headers = list(combined_df.columns)
-            else:
-                combined_df = None
-                combined_headers = []
-
-            # Add this block to define combined_mapping
-            if combined_df is not None:
-                combined_mapping = parse_headers_enhanced(combined_headers)
-            else:
-                combined_mapping = {}
             
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
@@ -650,9 +637,6 @@ if uploaded_files:
                 if mapping['indoorTemps']:
                     st.write(f"**Indoor Temps:** {[headers[i] for i in mapping['indoorTemps']]}")
             
-            # Create time series plots for this file
-            plots = create_time_series_plots(df, headers, mapping)
-            
             # Analyze issues for this file
             issues = analyze_hvac_data_enhanced(df, headers, mapping)
             all_issues.extend(issues)
@@ -662,199 +646,219 @@ if uploaded_files:
             if comfort_results:
                 st.markdown("## 🏠 Indoor Comfort Check")
                 for result in comfort_results:
-                    if result["type"] == "Relative Humidity":
+                    if result["type"] == "Outdoor Relative Humidity":
                         msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
                                else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
                         st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                     elif result["type"] == "Indoor Temperature":
-                        msg = ('✅ Within ideal range (70–75°F)' if result['compliant']
+                        msg = ('✅ Within ideal range (70-75°F)' if result['compliant'] 
                                else f'⚠️ {result["percent_outside"]:.1f}% of values outside 70-75°F range')
                         st.write(f"**{result['column']}** (Avg: {result['average']:.1f}°F) - {msg}")
-        
-            # Single set of time series plots using combined data
-            st.markdown("## 📈 Combined Time Series Analysis")
-            combined_plots = create_time_series_plots(combined_df, combined_headers, combined_mapping)
-            for plot_title, fig in combined_plots:
-                st.pyplot(fig)
-                plt.close(fig)  # Close figure to free memory
-            
-            # Single unified analysis results
-            if combined_issues:
-                # Show summary counts
-                high_count = len([i for i in combined_issues if i['severity'] == 'high'])
-                medium_count = len([i for i in combined_issues if i['severity'] == 'medium'])
-                low_count = len([i for i in combined_issues if i['severity'] == 'low'])
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("🔴 High Priority", high_count)
-                with col2:
-                    st.metric("🟡 Medium Priority", medium_count)
-                with col3:
-                    st.metric("🔵 Low Priority", low_count)
-    
-                # Display all issues grouped by severity
-                if high_count > 0:
-                    st.markdown("### 🔴 High Priority Issues")
-                    for issue in [i for i in combined_issues if i['severity'] == 'high']:
-                        st.error(f"**{issue['message']}**")
-                        st.markdown(f"**Why this matters:** {issue['explanation']}")
-                        st.markdown("**Recommended actions:**")
-                        for suggestion in issue['suggestions']:
-                            st.markdown(f"• {suggestion}")
-                        st.markdown("---")
-    
-                if medium_count > 0:
-                    st.markdown("### 🟡 Medium Priority Issues")
-                    for issue in [i for i in combined_issues if i['severity'] == 'medium']:
-                        st.warning(f"**{issue['message']}**")
-                        st.markdown(f"**Why this matters:** {issue['explanation']}")
-                        st.markdown("**Recommended actions:**")
-                        for suggestion in issue['suggestions']:
-                            st.markdown(f"• {suggestion}")
-                        st.markdown("---")
-    
-                if low_count > 0:
-                    st.markdown("### 🔵 Low Priority Issues")
-                    for issue in [i for i in combined_issues if i['severity'] == 'low']:
-                        st.info(f"**{issue['message']}**")
-                        st.markdown(f"**Why this matters:** {issue['explanation']}")
-                        st.markdown("**Recommended actions:**")
-                        for suggestion in issue['suggestions']:
-                            st.markdown(f"• {suggestion}")
-                        st.markdown("---")
-            else:
-                st.success("✅ No immediate HVAC issues detected in the combined data analysis.")
-    
-            # Single PDF Report Generation
-            st.markdown("## 📄 Generate Unified Report")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📄 Generate Combined PDF Report", type="primary"):
-                    try:
-                        pdf_buffer = generate_pdf_report(
-                            project_title=project_title,
-                            logo_file=logo_file,
-                            issues=combined_issues,
-                            df_summary=combined_df
-                        )
-                        
-                        if pdf_buffer:
-                            st.download_button(
-                                label="📥 Download Combined PDF Report",
-                                data=pdf_buffer,
-                                file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                mime="application/pdf"
-                            )
-                        else:
-                            raise Exception("PDF generation failed")
-                            
-                    except Exception as e:
-                        st.error(f"Error generating PDF: {str(e)}")
-                        st.info("PDF generation requires additional libraries. Falling back to text report.")
-                        
-                        # Fallback to text report
-                        report_lines = [
-                            f"{project_title} - Combined Analysis",
-                            "=" * (len(project_title) + 20),
-                            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                            f"Files Analyzed: {', '.join([info['name'] for info in all_file_info])}",
-                            f"Total Data Points: {len(combined_df)}",
-                            "",
-                            "HVAC DIAGNOSTIC ANALYSIS REPORT",
-                            "=" * 50,
-                            "",
-                            "UNIFIED SYSTEM DATA ANALYSIS FINDINGS:",
-                            ""
-                        ]
-                        
-                        if combined_issues:
-                            high_issues = [i for i in combined_issues if i.get('severity') == 'high']
-                            medium_issues = [i for i in combined_issues if i.get('severity') == 'medium']
-                            low_issues = [i for i in combined_issues if i.get('severity') == 'low']
-                            
-                            if high_issues:
-                                report_lines.extend(["HIGH PRIORITY ISSUES:", "-" * 20])
-                                for issue in high_issues:
-                                    report_lines.extend([
-                                        f"ISSUE: {issue['message']}",
-                                        f"EXPLANATION: {issue['explanation']}",
-                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
-                                        ""
-                                    ])
-                            
-                            if medium_issues:
-                                report_lines.extend(["MEDIUM PRIORITY ISSUES:", "-" * 22])
-                                for issue in medium_issues:
-                                    report_lines.extend([
-                                        f"ISSUE: {issue['message']}",
-                                        f"EXPLANATION: {issue['explanation']}",
-                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
-                                        ""
-                                    ])
-                            
-                            if low_issues:
-                                report_lines.extend(["LOW PRIORITY ISSUES:", "-" * 19])
-                                for issue in low_issues:
-                                    report_lines.extend([
-                                        f"ISSUE: {issue['message']}",
-                                        f"EXPLANATION: {issue['explanation']}",
-                                        f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
-                                        ""
-                                    ])
-                        else:
-                            report_lines.append("✅ No immediate HVAC issues detected in combined data analysis.")
-                        
-                        report_lines.extend([
-                            "",
-                            "DATA SOURCES:",
-                            "-" * 13
-                        ])
-                        for info in all_file_info:
-                            report_lines.append(f"• {info['name']} ({len(info['df'])} data points)")
-                        
-                        report_lines.extend([
-                            "",
-                            "=" * 50,
-                            f"Report generated by {project_title} Analysis System",
-                            "For technical support, please contact your HVAC service provider."
-                        ])
-                        
-                        report = "\n".join(report_lines)
-                        
-                        st.download_button(
-                            "📄 Download Combined Text Report",
-                            report,
-                            file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                            mime="text/plain"
-                        )
-            
-            with col2:
-                st.info(
-                    "📋 **Combined PDF Report Includes:**\n"
-                    "- Executive Summary for All Data\n"
-                    "- Unified Issue Analysis\n"
-                    "- Consolidated Recommendations\n"
-                    "- Combined Data Statistics\n"
-                    "- Source File Information\n"
-                    "- Professional Formatting"
-                )
 
         except Exception as e:
-                st.error(f"File {uploaded_file.name} could not be processed: {e}")
+            st.error(f"File {uploaded_file.name} could not be processed: {e}")
+
+    # Combine all dataframes for unified analysis
+    if len(all_dataframes) == 1:
+        combined_df = all_dataframes[0]
+        combined_headers = list(combined_df.columns)
+    elif len(all_dataframes) > 1:
+        combined_df = pd.concat(all_dataframes, ignore_index=True)
+        combined_headers = list(combined_df.columns)
+    else:
+        combined_df = None
+        combined_headers = []
+    
+    # Add this block to define combined_mapping
+    if combined_df is not None:
+        combined_mapping = parse_headers_enhanced(combined_headers)
+    else:
+        combined_mapping = {}
+
+    # Single set of time series plots using combined data
+    st.markdown("## 📈 Combined Time Series Analysis")
+    combined_plots = create_time_series_plots(combined_df, combined_headers, combined_mapping)
+    for plot_title, fig in combined_plots:
+        st.pyplot(fig)
+        plt.close(fig)  # Close figure to free memory
+
+    # Single unified analysis results
+    if all_issues:
+        # Show summary counts
+        high_count = len([i for i in all_issues if i['severity'] == 'high'])
+        medium_count = len([i for i in all_issues if i['severity'] == 'medium'])
+        low_count = len([i for i in all_issues if i['severity'] == 'low'])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🔴 High Priority", high_count)
+        with col2:
+            st.metric("🟡 Medium Priority", medium_count)
+        with col3:
+            st.metric("🔵 Low Priority", low_count)
+
+        # Display all issues grouped by severity
+        if high_count > 0:
+            st.markdown("### 🔴 High Priority Issues")
+            for issue in [i for i in all_issues if i['severity'] == 'high']:
+                st.error(f"**{issue['message']}**")
+                st.markdown(f"**Why this matters:** {issue['explanation']}")
+                st.markdown("**Recommended actions:**")
+                for suggestion in issue['suggestions']:
+                    st.markdown(f"• {suggestion}")
+                st.markdown("---")
+
+        if medium_count > 0:
+            st.markdown("### 🟡 Medium Priority Issues")
+            for issue in [i for i in all_issues if i['severity'] == 'medium']:
+                st.warning(f"**{issue['message']}**")
+                st.markdown(f"**Why this matters:** {issue['explanation']}")
+                st.markdown("**Recommended actions:**")
+                for suggestion in issue['suggestions']:
+                    st.markdown(f"• {suggestion}")
+                st.markdown("---")
+
+        if low_count > 0:
+            st.markdown("### 🔵 Low Priority Issues")
+            for issue in [i for i in all_issues if i['severity'] == 'low']:
+                st.info(f"**{issue['message']}**")
+                st.markdown(f"**Why this matters:** {issue['explanation']}")
+                st.markdown("**Recommended actions:**")
+                for suggestion in issue['suggestions']:
+                    st.markdown(f"• {suggestion}")
+                st.markdown("---")
+    else:
+        st.success("✅ No immediate HVAC issues detected in the combined data analysis.")
+
+    # Single PDF Report Generation
+    st.markdown("## 📄 Generate Unified Report")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📄 Generate Combined PDF Report", type="primary"):
+            try:
+                pdf_buffer = generate_pdf_report(
+                    project_title=project_title,
+                    logo_file=logo_file,
+                    issues=all_issues,
+                    df_summary=combined_df
+                )
+                
+                if pdf_buffer:
+                    st.download_button(
+                        label="📥 Download Combined PDF Report",
+                        data=pdf_buffer,
+                        file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                        mime="application/pdf"
+                    )
+                else:
+                    raise Exception("PDF generation failed")
+                    
+            except Exception as e:
+                st.error(f"Error generating PDF: {str(e)}")
+                st.info("PDF generation requires additional libraries. Falling back to text report.")
+                
+                # Fallback to text report
+                report_lines = [
+                    f"{project_title} - Combined Analysis",
+                    "=" * (len(project_title) + 20),
+                    f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    f"Files Analyzed: {', '.join([info['name'] for info in all_file_info])}",
+                    f"Total Data Points: {len(combined_df)}",
+                    "",
+                    "HVAC DIAGNOSTIC ANALYSIS REPORT",
+                    "=" * 50,
+                    "",
+                    "UNIFIED SYSTEM DATA ANALYSIS FINDINGS:",
+                    ""
+                ]
+                
+                if all_issues:
+                    high_issues = [i for i in all_issues if i.get('severity') == 'high']
+                    medium_issues = [i for i in all_issues if i.get('severity') == 'medium']
+                    low_issues = [i for i in all_issues if i.get('severity') == 'low']
+                    
+                    if high_issues:
+                        report_lines.extend(["HIGH PRIORITY ISSUES:", "-" * 20])
+                        for issue in high_issues:
+                            report_lines.extend([
+                                f"ISSUE: {issue['message']}",
+                                f"EXPLANATION: {issue['explanation']}",
+                                f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                ""
+                            ])
+                    
+                    if medium_issues:
+                        report_lines.extend(["MEDIUM PRIORITY ISSUES:", "-" * 22])
+                        for issue in medium_issues:
+                            report_lines.extend([
+                                f"ISSUE: {issue['message']}",
+                                f"EXPLANATION: {issue['explanation']}",
+                                f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                ""
+                            ])
+                    
+                    if low_issues:
+                        report_lines.extend(["LOW PRIORITY ISSUES:", "-" * 19])
+                        for issue in low_issues:
+                            report_lines.extend([
+                                f"ISSUE: {issue['message']}",
+                                f"EXPLANATION: {issue['explanation']}",
+                                f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
+                                ""
+                            ])
+                else:
+                    report_lines.append("✅ No immediate HVAC issues detected in combined data analysis.")
+                
+                report_lines.extend([
+                    "",
+                    "DATA SOURCES:",
+                    "-" * 13
+                ])
+                
+                for info in all_file_info:
+                    report_lines.append(f"• {info['name']} ({len(info['df'])} data points)")
+                
+                report_lines.extend([
+                    "",
+                    "=" * 50,
+                    f"Report generated by {project_title} Analysis System",
+                    "For technical support, please contact your HVAC service provider."
+                ])
+                
+                report = "\n".join(report_lines)
+                
+                st.download_button(
+                    "📄 Download Combined Text Report",
+                    report,
+                    file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    mime="text/plain"
+                )
+    
+    with col2:
+        st.info(
+            "📋 **Combined PDF Report Includes:**\n"
+            "- Executive Summary for All Data\n"
+            "- Unified Issue Analysis\n"
+            "- Consolidated Recommendations\n"
+            "- Combined Data Statistics\n"
+            "- Source File Information\n"
+            "- Professional Formatting"
+        )
 
 else:
     st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
+    
     st.markdown("### 📋 **Expected Data Format**")
     st.markdown("""
     Your CSV and XLSX files should contain columns with names that include:
-        - **Date/Time** information (e.g., 'Date', 'Timestamp')
-        - **Suction Pressure** data (e.g., 'Suction Pressure', 'Suction PSI')
-        - **Discharge Pressure** data (e.g., 'Discharge Pressure', 'Head Pressure')
-        - **Temperature** readings (e.g., 'Suction Temp', 'Supply Air Temp', 'Discharge Temp')
+    - **Date/Time** information (e.g., 'Date', 'Timestamp')
+    - **Suction Pressure** data (e.g., 'Suction Pressure', 'Suction PSI')
+    - **Discharge Pressure** data (e.g., 'Discharge Pressure', 'Head Pressure')
+    - **Temperature** readings (e.g., 'Suction Temp', 'Supply Air Temp', 'Discharge Temp')
+    
     The system will automatically detect and analyze these parameters based on column names.
     """)
-    st.markdown("---")
-    st.markdown("*Enhanced HVAC Data Analysis System - Professional diagnostic reporting for HVAC systems*")
+
+st.markdown("---")
+st.markdown("*Enhanced HVAC Data Analysis System - Professional diagnostic reporting for HVAC systems*")
