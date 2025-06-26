@@ -670,6 +670,13 @@ if uploaded_files:
     else:
         combined_df = None
         combined_headers = []
+
+    
+    # Ensure parsed_datetime exists in combined_df
+    if combined_df is not None and 'parsed_datetime' not in combined_df.columns:
+        combined_mapping = parse_headers_enhanced(combined_headers)
+        combined_df = create_datetime_column(combined_df, combined_mapping)
+
     
     # Add this block to define combined_mapping
     if combined_df is not None:
