@@ -54,7 +54,7 @@ def parse_headers_enhanced(headers):
         
         # Relative Humidity detection
         elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
-            if any(kw in header_lower for kw in ['oa rh', 'outdoor', 'outside']):
+            if any(kw in header_lower for kw in ['oa rh', 'outdoor', 'outside', 'outside air rh']):
                 mapping['outdoorRH'].append(i)
             else:
                 mapping['indoorRH'].append(i)
