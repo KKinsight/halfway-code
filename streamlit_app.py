@@ -740,7 +740,7 @@ if uploaded_files:
             for result in comfort_results:
                 elif result["type"] == "Indoor Relative Humidity":
                     msg = ('✅ Within ideal range (≤60%)' if result['compliant'] 
-                           else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
+                        else f'⚠️ {result["percent_over"]:.1f}% of values above 60%')
                     st.write(f"**{result['column']}** (Avg: {result['average']:.1f}%) - {msg}")
                 elif result["type"] == "Indoor Temperature":
                     msg = ('✅ Within ideal range (70-75°F)' if result['compliant']              
