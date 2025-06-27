@@ -941,4 +941,6 @@ else:
     """)
 
 st.markdown("---")
-st.markdown("*Enhanced HVAC Data Analysis System - Professional diagnostic reporting for HVAC systems*")
+st.markdown("*Enhanced HVAC Data Analysis System - Professional diagnostic reporting for HVAC systems*")'
+
+# update pls
