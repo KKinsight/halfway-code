@@ -63,15 +63,6 @@ def parse_headers_enhanced(headers):
         elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'spacetemp','space temp','space-temp']):
             mapping['indoorTemps'].append(i)
         
-        # Enhanced pressure detection
-        elif any(keyword in header_lower for keyword in ['1sucpr1','suction', 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
-             (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
-            mapping['suctionPressures'].append(i)
-        
-        elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr', '1cond1', '1headpr1']) or \
-             (('discharge' in header_lower or 'head' in header_lower or 'cond' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
-            mapping['dischargePressures'].append(i)
-        
         # Enhanced temperature detection
         elif any(keyword in header_lower for keyword in ['1suctmp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
             mapping['suctionTemps'].append(i)
@@ -84,6 +75,15 @@ def parse_headers_enhanced(headers):
         
         elif any(keyword in header_lower for keyword in ['oat', 'outdoor', 'outside']) and ('temp' in header_lower or 'air' in header_lower):
             mapping['outdoorAirTemps'].append(i)
+
+                # Enhanced pressure detection
+        elif any(keyword in header_lower for keyword in ['1sucpr1','suction', 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
+             (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
+            mapping['suctionPressures'].append(i)
+        
+        elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr', '1cond1', '1headpr1']) or \
+             (('discharge' in header_lower or 'head' in header_lower or 'cond' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
+            mapping['dischargePressures'].append(i)
         
         # Setpoint detection
         elif any(keyword in header_lower for keyword in ['csp', 'cool', 'cooling']) and ('sp' in header_lower or 'setpoint' in header_lower):
@@ -626,6 +626,9 @@ if logo_file:
 # Title and project input
 project_title = st.text_input("Enter Project Title", "HVAC Diagnostic Report")
 st.title(project_title)
+
+# DELETE
+st.write("Indoor RH Columns Detected:", [headers[i] for i in mapping['indoorRH']])
 
 # --- Single File Upload Section ---
 st.markdown("## 📁 Upload HVAC Data Files")
