@@ -627,9 +627,6 @@ if logo_file:
 project_title = st.text_input("Enter Project Title", "HVAC Diagnostic Report")
 st.title(project_title)
 
-# DELETE
-st.write("Indoor RH Columns Detected:", [headers[i] for i in mapping['indoorRH']])
-
 # --- Single File Upload Section ---
 st.markdown("## 📁 Upload HVAC Data Files")
 uploaded_files = st.file_uploader(
@@ -729,6 +726,9 @@ if uploaded_files:
         else:
             st.info("No numeric data available for summary statistics.")
 
+        # DELETE
+    st.write("Indoor RH Columns Detected:", [headers[i] for i in mapping['indoorRH']])
+    
     # Unified Indoor Comfort Check
     if combined_df is not None:
         combined_mapping = parse_headers_enhanced(combined_headers)
