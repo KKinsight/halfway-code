@@ -32,7 +32,8 @@ def parse_headers_enhanced(headers):
         'outdoorAirTemps': [],
         'coolingSetpoints': [],
         'heatingSetpoints': [],
-        'relativeHumidity': [],
+        'indoorRH': [],
+        'outdoorRH': [],
         'indoorTemps': [],
         'date': None,
         'time': None,
@@ -53,9 +54,10 @@ def parse_headers_enhanced(headers):
         
         # Relative Humidity detection
         elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
-            # Skip if "oa rh", "Outside Air", or any outside air indicator is in the header
-            if 'oa rh' not in header_lower:
-                mapping['relativeHumidity'].append(i)
+            if any(kw in header_lower for kw in ['oa rh', 'outdoor', 'outside']):
+                mapping['outdoorRH'].append(i)
+            else:
+                mapping['indoorRH'].append(i)
         
         # Indoor Temperature detection
         elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'spacetemp','space temp','space-temp']):
@@ -140,14 +142,14 @@ def check_comfort_conditions(df, headers, mapping):
     results = []
     
     # Check relative humidity
-    for idx in mapping.get('relativeHumidity', []):
+    for idx in mapping.get('indoorRH', []):
         humidity_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(humidity_data) > 0:
             above_60 = (humidity_data > 60).sum()
             percent_over = (above_60 / len(humidity_data)) * 100
             avg_humidity = humidity_data.mean()
             results.append({
-                'type': 'Outdoor Relative Humidity',
+                'type': 'Indoor Relative Humidity',
                 'column': headers[idx],
                 'average': avg_humidity,
                 'percent_over': percent_over,
@@ -565,6 +567,48 @@ def create_time_series_plots(df, headers, mapping):
         plt.xticks(rotation=45)
         plt.tight_layout()
         plots.append(('Pressure vs Time', fig))
+
+    # Relative Humidity vs Time Plot
+    indoor_rh_indices = mapping.get('indoorRH', [])
+    outdoor_rh_indices = mapping.get('outdoorRH', [])
+    colors = ['teal', 'magenta', 'olive', 'coral', 'gray', 'gold']
+    
+    if (indoor_rh_indices or outdoor_rh_indices) and 'parsed_datetime' in df.columns:
+        fig, ax = plt.subplots(figsize=(12, 6))
+    
+        # Indoor RH
+        for idx_num, idx in enumerate(indoor_rh_indices[:3]):
+            rh_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
+            label = get_legend_label(headers[idx]) + " (Indoor)"
+            valid_mask = ~rh_data.isna() & ~df['parsed_datetime'].isna()
+            ax.plot(df.loc[valid_mask, 'parsed_datetime'],
+                    rh_data[valid_mask],
+                    label=label,
+                    color=colors[idx_num % len(colors)],
+                    marker='o', linewidth=1, markersize=2)
+    
+        # Outdoor RH
+        for idx_num, idx in enumerate(outdoor_rh_indices[:3]):
+            rh_data = pd.to_numeric(df.iloc[:, idx], errors='coerce')
+            label = get_legend_label(headers[idx]) + " (Outdoor)"
+            valid_mask = ~rh_data.isna() & ~df['parsed_datetime'].isna()
+            ax.plot(df.loc[valid_mask, 'parsed_datetime'],
+                    rh_data[valid_mask],
+                    label=label,
+                    linestyle='--',
+                    color=colors[(idx_num + 3) % len(colors)],
+                    marker='x', linewidth=1, markersize=2)
+    
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Relative Humidity (%)")
+        ax.set_title("Relative Humidity (Indoor vs Outdoor) vs Time")
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df) // 10)))
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plots.append(('Relative Humidity vs Time', fig))
     
     return plots
     
