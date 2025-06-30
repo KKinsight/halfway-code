@@ -535,9 +535,9 @@ def create_time_series_plots(df, headers, mapping):
             from matplotlib.dates import AutoDateLocator
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
         ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            plots.append(('Temperature vs Time', fig))
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plots.append(('Temperature vs Time', fig))
     
     # Pressure vs Time Plot
     pressure_indices = mapping['suctionPressures'] + mapping['dischargePressures']
