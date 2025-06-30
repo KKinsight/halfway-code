@@ -64,7 +64,7 @@ def parse_headers_enhanced(headers):
             mapping['indoorTemps'].append(i)
         
         # Enhanced temperature detection
-        elif any(keyword in header_lower for keyword in ['1suctmp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp']):
+        elif any(keyword in header_lower for keyword in ['1suctmp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp', 'suction-temp']):
             mapping['suctionTemps'].append(i)
         
         elif any(keyword in header_lower for keyword in ['sat', 'supply air', 'supply_air', 'discharge temp']):
