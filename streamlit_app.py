@@ -654,7 +654,7 @@ if uploaded_files:
                     uploaded_file.seek(0)
                     lines = uploaded_file.read().decode('latin-1').splitlines()
                     if len(lines) > 1:
-                        lines.pop(1)  # Remove the unit row
+                        lines.pop(1)
                     cleaned_csv = "\n".join(lines)
                     df = pd.read_csv(StringIO(cleaned_csv))
                     st.success(f"✅ Cleaned CSV file '{uploaded_file.name}' successfully read with {len(df)} rows")
