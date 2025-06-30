@@ -725,9 +725,6 @@ if uploaded_files:
             st.dataframe(summary_stats.style.format("{:.2f}"))
         else:
             st.info("No numeric data available for summary statistics.")
-
-        # DELETE
-    st.write("Indoor RH Columns Detected:", [headers[i] for i in mapping['indoorRH']])
     
     # Unified Indoor Comfort Check
     if combined_df is not None:
