@@ -562,11 +562,12 @@ def create_time_series_plots(df, headers, mapping):
         ax.set_title('Pressure vs Time')
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
-        
-        # Format x-axis
+
+            # Format x-axis
         if len(df) > 0:
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-            ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df)//10)))
+            from matplotlib.dates import AutoDateLocator
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+        ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
         plt.xticks(rotation=45)
         plt.tight_layout()
         plots.append(('Pressure vs Time', fig))
@@ -607,8 +608,12 @@ def create_time_series_plots(df, headers, mapping):
         ax.set_title("Relative Humidity (Indoor vs Outdoor) vs Time")
         ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
         ax.grid(True, alpha=0.3)
+
+            # Format x-axis
+        if len(df) > 0:
+            from matplotlib.dates import AutoDateLocator
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-        ax.xaxis.set_major_locator(mdates.HourLocator(interval=max(1, len(df) // 10)))
+        ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
         plt.xticks(rotation=45)
         plt.tight_layout()
         plots.append(('Relative Humidity vs Time', fig))
