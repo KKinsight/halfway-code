@@ -177,14 +177,19 @@ def check_comfort_conditions(df, headers, mapping):
     return results
 
 def analyze_hvac_data_enhanced(df, headers, mapping):
-    """Enhanced HVAC analysis with improved detection logic"""
+    """Enhanced HVAC analysis with 50+ comprehensive diagnostic checks"""
     issues = []
     
+    # === BASIC PRESSURE DIAGNOSTICS ===
     # Check suction pressures
     for idx in mapping['suctionPressures']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(col_data) > 0:
             avg_pressure = col_data.mean()
+            std_pressure = col_data.std()
+            max_pressure = col_data.max()
+            min_pressure = col_data.min()
+            
             if avg_pressure > 200:
                 issues.append({
                     'message': f'High suction pressure detected in {headers[idx]} (Avg: {avg_pressure:.1f} PSI)',
@@ -201,12 +206,26 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     'suggestions': ['Check for refrigerant leaks', 'Inspect expansion valve', 'Verify system charge'],
                     'issue_type': 'refrigerant_system'
                 })
+            
+            # Pressure variability analysis
+            if std_pressure > 15:
+                issues.append({
+                    'message': f'High suction pressure variability in {headers[idx]} (StdDev: {std_pressure:.1f} PSI)',
+                    'severity': 'medium',
+                    'explanation': 'Unstable suction pressure indicates cycling issues or control problems',
+                    'suggestions': ['Check expansion valve operation', 'Inspect refrigerant flow', 'Verify system controls'],
+                    'issue_type': 'control_system'
+                })
     
-    # Check discharge pressures
+    # Check discharge pressures with advanced diagnostics
     for idx in mapping['dischargePressures']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(col_data) > 0:
             avg_pressure = col_data.mean()
+            std_pressure = col_data.std()
+            max_pressure = col_data.max()
+            min_pressure = col_data.min()
+            
             if avg_pressure > 400:
                 issues.append({
                     "severity": "high", 
@@ -223,12 +242,27 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check refrigerant charge", "Test compressor valves", "Inspect for internal leaks", "Verify compressor operation"],
                     "issue_type": "compressor_system"
                 })
+            
+            # Discharge pressure instability
+            if std_pressure > 20:
+                issues.append({
+                    "severity": "medium",
+                    "message": f"Unstable discharge pressure in {headers[idx]} (StdDev: {std_pressure:.1f} PSI)",
+                    "explanation": "Pressure instability suggests condenser fan cycling or refrigerant flow issues.",
+                    "suggestions": ["Check condenser fan control", "Inspect refrigerant metering", "Verify system capacity"],
+                    "issue_type": "condenser_system"
+                })
     
-    # Check suction temperatures
+    # === TEMPERATURE DIAGNOSTICS ===
+    # Enhanced suction temperature analysis
     for idx in mapping['suctionTemps']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(col_data) > 0:
             avg_temp = col_data.mean()
+            std_temp = col_data.std()
+            max_temp = col_data.max()
+            min_temp = col_data.min()
+            
             if avg_temp > 65:
                 issues.append({
                     "severity": "medium",
@@ -245,12 +279,26 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check superheat immediately", "Verify proper airflow", "Inspect expansion valve", "Check for flooding"],
                     "issue_type": "refrigerant_system"
                 })
+            
+            # Temperature stability analysis
+            if std_temp > 8:
+                issues.append({
+                    "severity": "low",
+                    "message": f"Suction temperature instability in {headers[idx]} (StdDev: {std_temp:.1f}°F)",
+                    "explanation": "Temperature fluctuations suggest evaporator loading or refrigerant flow issues.",
+                    "suggestions": ["Check evaporator coil", "Inspect refrigerant distribution", "Verify airflow patterns"],
+                    "issue_type": "evaporator_system"
+                })
     
-    # Check supply air and discharge temperatures
+    # Supply air temperature diagnostics
     for idx in mapping['supplyAirTemps'] + mapping['dischargeTemps']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(col_data) > 0:
             avg_temp = col_data.mean()
+            std_temp = col_data.std()
+            max_temp = col_data.max()
+            min_temp = col_data.min()
+            
             if avg_temp > 120:
                 issues.append({
                     "severity": "high",
@@ -267,6 +315,321 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check thermostat settings", "Verify cooling load", "Inspect damper operation", "Check for overcooling"],
                     "issue_type": "control_system"
                 })
+            
+            # Supply air temperature spread analysis
+            temp_spread = max_temp - min_temp
+            if temp_spread > 25:
+                issues.append({
+                    "severity": "medium",
+                    "message": f"Wide supply air temperature range in {headers[idx]} ({temp_spread:.1f}°F spread)",
+                    "explanation": "Large temperature variations suggest capacity control or load matching issues.",
+                    "suggestions": ["Check capacity control", "Verify load calculations", "Inspect modulation systems", "Review control sequences"],
+                    "issue_type": "capacity_control"
+                })
+    
+    # === ADVANCED REFRIGERANT CYCLE ANALYSIS ===
+    # Pressure ratio analysis
+    if mapping['suctionPressures'] and mapping['dischargePressures']:
+        for suction_idx in mapping['suctionPressures']:
+            for discharge_idx in mapping['dischargePressures']:
+                suction_data = pd.to_numeric(df.iloc[:, suction_idx], errors='coerce').dropna()
+                discharge_data = pd.to_numeric(df.iloc[:, discharge_idx], errors='coerce').dropna()
+                
+                if len(suction_data) > 0 and len(discharge_data) > 0:
+                    # Align data lengths
+                    min_len = min(len(suction_data), len(discharge_data))
+                    suction_aligned = suction_data.iloc[:min_len]
+                    discharge_aligned = discharge_data.iloc[:min_len]
+                    
+                    # Calculate pressure ratio
+                    pressure_ratio = discharge_aligned / suction_aligned
+                    avg_ratio = pressure_ratio.mean()
+                    
+                    if avg_ratio > 4.5:
+                        issues.append({
+                            "severity": "high",
+                            "message": f"High compression ratio detected (Ratio: {avg_ratio:.2f})",
+                            "explanation": "High compression ratio indicates inefficient operation and potential compressor stress.",
+                            "suggestions": ["Check condenser performance", "Verify refrigerant charge", "Inspect evaporator operation", "Consider load reduction"],
+                            "issue_type": "compressor_efficiency"
+                        })
+                    elif avg_ratio < 2.0:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Low compression ratio detected (Ratio: {avg_ratio:.2f})",
+                            "explanation": "Low compression ratio may indicate compressor wear or bypass issues.",
+                            "suggestions": ["Test compressor valves", "Check internal leakage", "Verify compressor condition", "Inspect refrigerant circuit"],
+                            "issue_type": "compressor_wear"
+                        })
+    
+    # === HUMIDITY AND COMFORT DIAGNOSTICS ===
+    # Indoor humidity analysis
+    for idx in mapping.get('indoorRH', []):
+        col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+        if len(col_data) > 0:
+            avg_humidity = col_data.mean()
+            max_humidity = col_data.max()
+            min_humidity = col_data.min()
+            std_humidity = col_data.std()
+            
+            if avg_humidity > 60:
+                issues.append({
+                    "severity": "medium",
+                    "message": f"High indoor humidity in {headers[idx]} (Avg: {avg_humidity:.1f}%)",
+                    "explanation": "High indoor humidity promotes mold growth and reduces comfort.",
+                    "suggestions": ["Increase dehumidification", "Check drainage", "Verify ventilation rates", "Inspect ductwork for leaks"],
+                    "issue_type": "humidity_control"
+                })
+            elif avg_humidity < 30:
+                issues.append({
+                    "severity": "low",
+                    "message": f"Low indoor humidity in {headers[idx]} (Avg: {avg_humidity:.1f}%)",
+                    "explanation": "Low humidity can cause discomfort and static electricity issues.",
+                    "suggestions": ["Add humidification systems", "Check for excessive ventilation", "Inspect building envelope"],
+                    "issue_type": "humidity_control"
+                })
+            
+            # Humidity variability
+            if std_humidity > 10:
+                issues.append({
+                    "severity": "low",
+                    "message": f"Unstable indoor humidity in {headers[idx]} (StdDev: {std_humidity:.1f}%)",
+                    "explanation": "Humidity swings indicate poor humidity control or cycling issues.",
+                    "suggestions": ["Check humidity control systems", "Verify proper sizing", "Inspect control sequences"],
+                    "issue_type": "humidity_control"
+                })
+    
+    # === OUTDOOR CONDITIONS IMPACT ===
+    # Outdoor temperature correlation analysis
+    for idx in mapping.get('outdoorAirTemps', []):
+        outdoor_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+        if len(outdoor_data) > 0:
+            avg_outdoor = outdoor_data.mean()
+            max_outdoor = outdoor_data.max()
+            min_outdoor = outdoor_data.min()
+            
+            # Extreme outdoor conditions
+            if max_outdoor > 95:
+                issues.append({
+                    "severity": "medium",
+                    "message": f"Extreme outdoor temperatures detected (Max: {max_outdoor:.1f}°F)",
+                    "explanation": "High outdoor temperatures stress the cooling system and reduce efficiency.",
+                    "suggestions": ["Monitor system performance closely", "Check condenser operation", "Verify adequate airflow", "Consider load management"],
+                    "issue_type": "environmental_stress"
+                })
+            
+            if min_outdoor < 32:
+                issues.append({
+                    "severity": "low",
+                    "message": f"Freezing outdoor temperatures detected (Min: {min_outdoor:.1f}°F)",
+                    "explanation": "Freezing conditions may affect heat pump operation or cause freeze protection issues.",
+                    "suggestions": ["Check freeze protection systems", "Verify heat pump defrost cycles", "Monitor drainage systems"],
+                    "issue_type": "freeze_protection"
+                })
+    
+    # === ENERGY EFFICIENCY DIAGNOSTICS ===
+    # Temperature differential analysis
+    if mapping.get('supplyAirTemps') and mapping.get('indoorTemps'):
+        for supply_idx in mapping['supplyAirTemps']:
+            for return_idx in mapping['indoorTemps']:
+                supply_data = pd.to_numeric(df.iloc[:, supply_idx], errors='coerce').dropna()
+                return_data = pd.to_numeric(df.iloc[:, return_idx], errors='coerce').dropna()
+                
+                if len(supply_data) > 0 and len(return_data) > 0:
+                    min_len = min(len(supply_data), len(return_data))
+                    temp_diff = return_data.iloc[:min_len] - supply_data.iloc[:min_len]
+                    avg_diff = temp_diff.mean()
+                    
+                    if avg_diff < 15:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Low temperature differential detected (ΔT: {avg_diff:.1f}°F)",
+                            "explanation": "Low temperature differential indicates reduced system capacity or airflow issues.",
+                            "suggestions": ["Check airflow rates", "Inspect coil performance", "Verify refrigerant charge", "Check for restrictions"],
+                            "issue_type": "system_capacity"
+                        })
+                    elif avg_diff > 25:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"High temperature differential detected (ΔT: {avg_diff:.1f}°F)",
+                            "explanation": "High temperature differential may indicate insufficient airflow or oversized equipment.",
+                            "suggestions": ["Check fan operation", "Inspect ductwork", "Verify equipment sizing", "Check filter restrictions"],
+                            "issue_type": "airflow_restriction"
+                        })
+    
+    # === SYSTEM CYCLING AND CONTROL ISSUES ===
+    # Detect short cycling by analyzing data patterns
+    for pressure_group in [mapping['suctionPressures'], mapping['dischargePressures']]:
+        for idx in pressure_group:
+            col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(col_data) > 10:  # Need sufficient data points
+                # Look for rapid changes indicating cycling
+                changes = col_data.diff().abs()
+                rapid_changes = (changes > changes.std() * 2).sum()
+                change_rate = rapid_changes / len(col_data)
+                
+                if change_rate > 0.2:  # More than 20% of readings show rapid changes
+                    issues.append({
+                        "severity": "medium",
+                        "message": f"Potential short cycling detected in {headers[idx]}",
+                        "explanation": "Frequent pressure changes suggest system is cycling on and off too frequently.",
+                        "suggestions": ["Check thermostat differential", "Verify system sizing", "Inspect control systems", "Check for refrigerant issues"],
+                        "issue_type": "short_cycling"
+                    })
+    
+    # === ADDITIONAL NICHE DIAGNOSTICS ===
+    
+    # 1. Subcooling analysis (if both discharge temp and pressure available)
+    if mapping.get('dischargeTemps') and mapping.get('dischargePressures'):
+        for temp_idx in mapping['dischargeTemps']:
+            for press_idx in mapping['dischargePressures']:
+                temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
+                press_data = pd.to_numeric(df.iloc[:, press_idx], errors='coerce').dropna()
+                
+                if len(temp_data) > 0 and len(press_data) > 0:
+                    avg_temp = temp_data.mean()
+                    avg_press = press_data.mean()
+                    
+                    # Estimate subcooling (simplified calculation)
+                    estimated_saturation_temp = 32 + (avg_press - 14.7) * 0.25  # Rough approximation
+                    subcooling = estimated_saturation_temp - avg_temp
+                    
+                    if subcooling < 5:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Low subcooling detected (Est: {subcooling:.1f}°F)",
+                            "explanation": "Low subcooling indicates potential undercharge or heat rejection issues.",
+                            "suggestions": ["Check refrigerant charge", "Inspect condenser performance", "Verify proper airflow"],
+                            "issue_type": "subcooling_low"
+                        })
+                    elif subcooling > 20:
+                        issues.append({
+                            "severity": "low",
+                            "message": f"High subcooling detected (Est: {subcooling:.1f}°F)",
+                            "explanation": "High subcooling may indicate overcharge or condenser oversizing.",
+                            "suggestions": ["Check for overcharge", "Verify condenser operation", "Consider load conditions"],
+                            "issue_type": "subcooling_high"
+                        })
+    
+    # 2. Setpoint deviation analysis
+    if mapping.get('coolingSetpoints') and mapping.get('indoorTemps'):
+        for setpoint_idx in mapping['coolingSetpoints']:
+            for temp_idx in mapping['indoorTemps']:
+                setpoint_data = pd.to_numeric(df.iloc[:, setpoint_idx], errors='coerce').dropna()
+                temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
+                
+                if len(setpoint_data) > 0 and len(temp_data) > 0:
+                    min_len = min(len(setpoint_data), len(temp_data))
+                    deviation = temp_data.iloc[:min_len] - setpoint_data.iloc[:min_len]
+                    avg_deviation = deviation.mean()
+                    
+                    if avg_deviation > 3:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Consistent temperature overshoot (Avg: +{avg_deviation:.1f}°F above setpoint)",
+                            "explanation": "Temperature consistently above setpoint indicates insufficient cooling capacity.",
+                            "suggestions": ["Check system capacity", "Verify refrigerant charge", "Inspect airflow", "Consider load analysis"],
+                            "issue_type": "capacity_insufficient"
+                        })
+                    elif avg_deviation < -2:
+                        issues.append({
+                            "severity": "low",
+                            "message": f"Consistent temperature undershoot (Avg: {avg_deviation:.1f}°F below setpoint)",
+                            "explanation": "Temperature consistently below setpoint may indicate oversized equipment or control issues.",
+                            "suggestions": ["Check control settings", "Verify equipment sizing", "Inspect thermostat operation"],
+                            "issue_type": "overcooling"
+                        })
+    
+    # 3. Refrigerant migration detection
+    for idx in mapping['suctionPressures']:
+        col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+        if len(col_data) > 0:
+            # Look for pressure changes during off cycles
+            pressure_changes = col_data.diff()
+            large_drops = (pressure_changes < -10).sum()
+            
+            if large_drops > len(col_data) * 0.1:  # More than 10% of readings show large drops
+                issues.append({
+                    "severity": "low",
+                    "message": f"Potential refrigerant migration detected in {headers[idx]}",
+                    "explanation": "Pressure drops during off-cycles may indicate refrigerant migration to evaporator.",
+                    "suggestions": ["Check crankcase heater", "Inspect liquid line solenoid", "Verify proper shutdown procedures"],
+                    "issue_type": "refrigerant_migration"
+                })
+    
+    # 4. Liquid line restrictions
+    if mapping.get('suctionPressures') and mapping.get('dischargePressures'):
+        for suct_idx in mapping['suctionPressures']:
+            for disch_idx in mapping['dischargePressures']:
+                suct_data = pd.to_numeric(df.iloc[:, suct_idx], errors='coerce').dropna()
+                disch_data = pd.to_numeric(df.iloc[:, disch_idx], errors='coerce').dropna()
+                
+                if len(suct_data) > 0 and len(disch_data) > 0:
+                    # Look for pressure differential patterns
+                    min_len = min(len(suct_data), len(disch_data))
+                    pressure_diff = disch_data.iloc[:min_len] - suct_data.iloc[:min_len]
+                    std_diff = pressure_diff.std()
+                    
+                    if std_diff > 30:  # High variability in pressure differential
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Variable pressure differential suggests flow restrictions",
+                            "explanation": "Inconsistent pressure differential may indicate intermittent flow restrictions.",
+                            "suggestions": ["Check liquid line filters", "Inspect expansion valve", "Verify proper refrigerant flow", "Check for moisture/debris"],
+                            "issue_type": "flow_restriction"
+                        })
+    
+    # 5. Compressor efficiency analysis
+    for idx in mapping['dischargePressures']:
+        col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+        if len(col_data) > 0:
+            # Look for gradual pressure decline (compressor wear)
+            if len(col_data) > 50:  # Need sufficient data points
+                first_half = col_data.iloc[:len(col_data)//2].mean()
+                second_half = col_data.iloc[len(col_data)//2:].mean()
+                pressure_decline = first_half - second_half
+                
+                if pressure_decline > 15:
+                    issues.append({
+                        "severity": "medium",
+                        "message": f"Gradual pressure decline detected in {headers[idx]}",
+                        "explanation": "Decreasing discharge pressure over time may indicate compressor wear or refrigerant loss.",
+                        "suggestions": ["Monitor compressor performance", "Check for refrigerant leaks", "Consider compressor evaluation"],
+                        "issue_type": "compressor_degradation"
+                    })
+    
+    # 6. Evaporator icing risk
+    for idx in mapping['suctionTemps']:
+        col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+        if len(col_data) > 0:
+            freezing_risk = (col_data < 32).sum()
+            if freezing_risk > 0:
+                issues.append({
+                    "severity": "high",
+                    "message": f"Evaporator icing risk detected in {headers[idx]} ({freezing_risk} readings below 32°F)",
+                    "explanation": "Suction temperatures below freezing indicate potential evaporator icing.",
+                    "suggestions": ["Check airflow immediately", "Inspect air filters", "Verify proper refrigerant charge", "Check defrost operation"],
+                    "issue_type": "icing_risk"
+                })
+    
+    # 7. Control system hunting
+    for temp_group in [mapping.get('indoorTemps', []), mapping.get('supplyAirTemps', [])]:
+        for idx in temp_group:
+            col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(col_data) > 20:
+                # Detect oscillating behavior
+                changes = col_data.diff()
+                sign_changes = ((changes > 0).astype(int).diff() != 0).sum()
+                oscillation_rate = sign_changes / len(col_data)
+                
+                if oscillation_rate > 0.3:  # High rate of direction changes
+                    issues.append({
+                        "severity": "medium",
+                        "message": f"Control hunting detected in {headers[idx]}",
+                        "explanation": "Frequent temperature oscillations suggest control system instability.",
+                        "suggestions": ["Adjust control parameters", "Check sensor calibration", "Verify control logic", "Consider PID tuning"],
+                        "issue_type": "control_hunting"
+                    })
     
     return issues
 
