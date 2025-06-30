@@ -144,7 +144,7 @@ def check_comfort_conditions(df, headers, mapping):
     # Check relative humidity
     for idx in mapping.get('indoorRH', []):
         if headers[idx] == '1SprHtSP':
-            continue  # Skip this column
+            continue
         humidity_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(humidity_data) > 0:
             above_60 = (humidity_data > 60).sum()
