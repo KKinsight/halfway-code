@@ -649,8 +649,18 @@ if uploaded_files:
                 df = pd.read_excel(uploaded_file)
                 st.success(f"✅ Excel file '{uploaded_file.name}' successfully read with {len(df)} rows")
             else:
-                df, content = read_csv_with_encoding(uploaded_file)
-                st.success(f"✅ CSV file '{uploaded_file.name}' successfully read with {len(df)} rows")
+                # Read and clean CSV by skipping the second row (units like °F)
+                try:
+                    uploaded_file.seek(0)
+                    lines = uploaded_file.read().decode('latin-1').splitlines()
+                    if len(lines) > 1:
+                        lines.pop(1)  # Remove the unit row
+                    cleaned_csv = "\n".join(lines)
+                    df = pd.read_csv(StringIO(cleaned_csv))
+                    st.success(f"✅ Cleaned CSV file '{uploaded_file.name}' successfully read with {len(df)} rows")
+                except Exception as e:
+                    st.error(f"Failed to read and clean '{uploaded_file.name}': {e}")
+                    continue
             
             # Clean the data - skip rows that are all NaN or contain header-like content
             df = df.dropna(how='all')  # Remove completely empty rows
