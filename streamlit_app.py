@@ -399,34 +399,6 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "issue_type": "humidity_control"
                 })
     
-    # === OUTDOOR CONDITIONS IMPACT ===
-    # Outdoor temperature correlation analysis
-    for idx in mapping.get('outdoorAirTemps', []):
-        outdoor_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
-        if len(outdoor_data) > 0:
-            avg_outdoor = outdoor_data.mean()
-            max_outdoor = outdoor_data.max()
-            min_outdoor = outdoor_data.min()
-            
-            # Extreme outdoor conditions
-            if max_outdoor > 95:
-                issues.append({
-                    "severity": "medium",
-                    "message": f"Extreme outdoor temperatures detected (Max: {max_outdoor:.1f}°F)",
-                    "explanation": "High outdoor temperatures stress the cooling system and reduce efficiency.",
-                    "suggestions": ["Monitor system performance closely", "Check condenser operation", "Verify adequate airflow", "Consider load management"],
-                    "issue_type": "environmental_stress"
-                })
-            
-            if min_outdoor < 32:
-                issues.append({
-                    "severity": "low",
-                    "message": f"Freezing outdoor temperatures detected (Min: {min_outdoor:.1f}°F)",
-                    "explanation": "Freezing conditions may affect heat pump operation or cause freeze protection issues.",
-                    "suggestions": ["Check freeze protection systems", "Verify heat pump defrost cycles", "Monitor drainage systems"],
-                    "issue_type": "freeze_protection"
-                })
-    
     # === ENERGY EFFICIENCY DIAGNOSTICS ===
     # Temperature differential analysis
     if mapping.get('supplyAirTemps') and mapping.get('indoorTemps'):
