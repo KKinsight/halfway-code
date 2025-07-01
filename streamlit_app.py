@@ -630,6 +630,399 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                         "suggestions": ["Adjust control parameters", "Check sensor calibration", "Verify control logic", "Consider PID tuning"],
                         "issue_type": "control_hunting"
                     })
+
+    # 8. Dew point analysis for moisture control
+        for idx in mapping.get('spaceDewPoints', []):
+            col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(col_data) > 0:
+                avg_dewpoint = col_data.mean()
+                max_dewpoint = col_data.max()
+                
+                if avg_dewpoint > 60:
+                    issues.append({
+                        "severity": "high",
+                        "message": f"High dew point detected in {headers[idx]} (Avg: {avg_dewpoint:.1f}°F)",
+                        "explanation": "High dew point indicates excessive moisture that can cause condensation and mold issues.",
+                        "suggestions": ["Increase dehumidification capacity", "Check building envelope", "Verify ventilation rates", "Inspect for moisture sources"],
+                        "issue_type": "moisture_control"
+                    })
+                
+                if max_dewpoint > 65:
+                    issues.append({
+                        "severity": "high",
+                        "message": f"Critical dew point levels detected in {headers[idx]} (Max: {max_dewpoint:.1f}°F)",
+                        "explanation": "Critical dew point levels risk condensation on cool surfaces.",
+                        "suggestions": ["Immediate dehumidification action", "Check for water intrusion", "Inspect HVAC drainage"],
+                        "issue_type": "condensation_risk"
+                    })
+
+        # 9. Compressor fan performance analysis
+        for idx in mapping.get('compressorFanSpeeds', []):
+            col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(col_data) > 0:
+                avg_speed = col_data.mean()
+                std_speed = col_data.std()
+                min_speed = col_data.min()
+                
+                # Fan speed variability
+                if std_speed > avg_speed * 0.15:  # More than 15% variation
+                    issues.append({
+                        "severity": "medium",
+                        "message": f"Compressor fan speed instability in {headers[idx]} (StdDev: {std_speed:.1f})",
+                        "explanation": "Unstable fan speed indicates potential motor, control, or power supply issues.",
+                        "suggestions": ["Check fan motor condition", "Inspect electrical connections", "Verify VFD operation", "Check control signals"],
+                        "issue_type": "fan_instability"
+                    })
+                
+                # Low fan speed detection
+                if min_speed < avg_speed * 0.5 and min_speed > 0:
+                    issues.append({
+                        "severity": "medium",
+                        "message": f"Low compressor fan speeds detected in {headers[idx]} (Min: {min_speed:.1f})",
+                        "explanation": "Intermittent low fan speeds may indicate motor problems or control issues.",
+                        "suggestions": ["Inspect fan motor bearings", "Check motor overload protection", "Verify control programming"],
+                        "issue_type": "fan_performance"
+                    })
+
+        # 10. Superheat calculation and analysis
+        if mapping.get('suctionTemps') and mapping.get('suctionPressures'):
+            for temp_idx in mapping['suctionTemps']:
+                for press_idx in mapping['suctionPressures']:
+                    temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
+                    press_data = pd.to_numeric(df.iloc[:, press_idx], errors='coerce').dropna()
+                    
+                    if len(temp_data) > 0 and len(press_data) > 0:
+                        min_len = min(len(temp_data), len(press_data))
+                        # Simplified saturation temperature calculation
+                        sat_temp = 32 + (press_data.iloc[:min_len] - 14.7) * 0.3  # Rough R-410A approximation
+                        superheat = temp_data.iloc[:min_len] - sat_temp
+                        avg_superheat = superheat.mean()
+                        
+                        if avg_superheat < 5:
+                            issues.append({
+                                "severity": "high",
+                                "message": f"Low superheat detected (Avg: {avg_superheat:.1f}°F)",
+                                "explanation": "Low superheat risks liquid refrigerant return to compressor, causing damage.",
+                                "suggestions": ["Adjust expansion valve", "Check refrigerant charge", "Verify proper evaporator airflow"],
+                                "issue_type": "superheat_low"
+                            })
+                        elif avg_superheat > 25:
+                            issues.append({
+                                "severity": "medium",
+                                "message": f"High superheat detected (Avg: {avg_superheat:.1f}°F)",
+                                "explanation": "High superheat indicates undercharge or restricted refrigerant flow.",
+                                "suggestions": ["Check refrigerant charge", "Inspect expansion valve", "Verify proper metering"],
+                                "issue_type": "superheat_high"
+                            })
+
+        # 11. Heat pump defrost cycle analysis
+        for idx in mapping.get('outdoorAirTemps', []):
+            outdoor_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(outdoor_data) > 0:
+                freezing_conditions = (outdoor_data < 40).sum()  # Conditions where defrost may be needed
+                
+                if freezing_conditions > len(outdoor_data) * 0.3:  # More than 30% of time in defrost conditions
+                    # Check if system is showing signs of frost buildup
+                    for press_idx in mapping.get('suctionPressures', []):
+                        press_data = pd.to_numeric(df.iloc[:, press_idx], errors='coerce').dropna()
+                        if len(press_data) > 0:
+                            # Low pressure during cold conditions may indicate frost
+                            cold_weather_pressure = press_data[outdoor_data < 40].mean() if len(outdoor_data[outdoor_data < 40]) > 0 else None
+                            if cold_weather_pressure and cold_weather_pressure < 60:
+                                issues.append({
+                                    "severity": "medium",
+                                    "message": f"Potential defrost issues during cold weather (Pressure: {cold_weather_pressure:.1f} PSI)",
+                                    "explanation": "Low suction pressure during cold weather suggests inadequate defrost operation.",
+                                    "suggestions": ["Check defrost sensors", "Verify defrost control logic", "Inspect outdoor coil", "Check defrost termination"],
+                                    "issue_type": "defrost_issues"
+                                })
+
+        # 12. Economizer operation analysis
+        if mapping.get('outdoorAirTemps') and mapping.get('indoorTemps'):
+            for outdoor_idx in mapping['outdoorAirTemps']:
+                for indoor_idx in mapping['indoorTemps']:
+                    outdoor_data = pd.to_numeric(df.iloc[:, outdoor_idx], errors='coerce').dropna()
+                    indoor_data = pd.to_numeric(df.iloc[:, indoor_idx], errors='coerce').dropna()
+                    
+                    if len(outdoor_data) > 0 and len(indoor_data) > 0:
+                        min_len = min(len(outdoor_data), len(indoor_data))
+                        
+                        # Find times when economizer should be active (outdoor < indoor - 2°F)
+                        economizer_opportunity = (outdoor_data.iloc[:min_len] < indoor_data.iloc[:min_len] - 2).sum()
+                        
+                        if economizer_opportunity > min_len * 0.2:  # More than 20% of time
+                            issues.append({
+                                "severity": "low",
+                                "message": f"Economizer opportunities detected ({economizer_opportunity} instances)",
+                                "explanation": "Outdoor conditions favorable for free cooling were available but may not have been utilized.",
+                                "suggestions": ["Verify economizer operation", "Check damper controls", "Inspect outdoor air sensors", "Review economizer logic"],
+                                "issue_type": "economizer_optimization"
+                            })
+
+        # 13. Supply air reset analysis
+        for idx in mapping.get('supplyAirSetpoints', []):
+            setpoint_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(setpoint_data) > 0:
+                setpoint_range = setpoint_data.max() - setpoint_data.min()
+                
+                if setpoint_range < 5:
+                    issues.append({
+                        "severity": "low",
+                        "message": f"Limited supply air reset detected in {headers[idx]} (Range: {setpoint_range:.1f}°F)",
+                        "explanation": "Fixed supply air temperature may indicate unused energy savings opportunity.",
+                        "suggestions": ["Implement supply air reset", "Check reset control logic", "Verify outdoor air temperature sensor"],
+                        "issue_type": "supply_air_reset"
+                    })
+
+        # 14. Simultaneous heating and cooling detection
+        if mapping.get('heatingSetpoints') and mapping.get('coolingSetpoints'):
+            for heat_idx in mapping['heatingSetpoints']:
+                for cool_idx in mapping['coolingSetpoints']:
+                    heat_data = pd.to_numeric(df.iloc[:, heat_idx], errors='coerce').dropna()
+                    cool_data = pd.to_numeric(df.iloc[:, cool_idx], errors='coerce').dropna()
+                    
+                    if len(heat_data) > 0 and len(cool_data) > 0:
+                        min_len = min(len(heat_data), len(cool_data))
+                        deadband = cool_data.iloc[:min_len] - heat_data.iloc[:min_len]
+                        avg_deadband = deadband.mean()
+                        
+                        if avg_deadband < 3:
+                            issues.append({
+                                "severity": "medium",
+                                "message": f"Narrow temperature deadband detected (Avg: {avg_deadband:.1f}°F)",
+                                "explanation": "Narrow deadband between heating and cooling may cause simultaneous operation and energy waste.",
+                                "suggestions": ["Increase deadband to 3-5°F", "Check control sequences", "Verify sensor calibration"],
+                                "issue_type": "deadband_narrow"
+                            })
+
+        # 15. Power quality and electrical issues
+        if mapping.get('powerConsumption', []):
+            for idx in mapping['powerConsumption']:
+                power_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(power_data) > 0:
+                    power_variation = power_data.std() / power_data.mean()
+                    
+                    if power_variation > 0.3:  # High power variation
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"High power consumption variation in {headers[idx]} (CV: {power_variation:.2f})",
+                            "explanation": "Unstable power consumption may indicate electrical issues or equipment cycling problems.",
+                            "suggestions": ["Check electrical connections", "Inspect contactors and relays", "Monitor voltage stability", "Verify load balance"],
+                            "issue_type": "power_instability"
+                        })
+
+        # 16. Ventilation adequacy analysis
+        if mapping.get('outdoorAirFlow', []):
+            for idx in mapping['outdoorAirFlow']:
+                oa_flow_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(oa_flow_data) > 0:
+                    avg_oa_flow = oa_flow_data.mean()
+                    min_oa_flow = oa_flow_data.min()
+                    
+                    # Check for inadequate outdoor air
+                    if min_oa_flow < avg_oa_flow * 0.5:
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Inadequate outdoor air flow detected in {headers[idx]} (Min: {min_oa_flow:.1f})",
+                            "explanation": "Low outdoor air flow compromises indoor air quality and may violate codes.",
+                            "suggestions": ["Check outdoor air dampers", "Inspect air handling unit", "Verify minimum ventilation settings", "Check for blockages"],
+                            "issue_type": "ventilation_inadequate"
+                        })
+
+        # 17. Filter loading analysis
+        if mapping.get('filterPressureDrop', []):
+            for idx in mapping['filterPressureDrop']:
+                filter_dp_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(filter_dp_data) > 0:
+                    max_filter_dp = filter_dp_data.max()
+                    avg_filter_dp = filter_dp_data.mean()
+                    
+                    if max_filter_dp > 2.0:  # High filter pressure drop
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"High filter pressure drop detected in {headers[idx]} (Max: {max_filter_dp:.2f} in WC)",
+                            "explanation": "High filter pressure drop reduces airflow and increases energy consumption.",
+                            "suggestions": ["Replace air filters", "Check filter installation", "Consider higher capacity filters", "Implement filter monitoring"],
+                            "issue_type": "filter_loading"
+                        })
+
+        # 18. Thermal comfort analysis
+        if mapping.get('indoorTemps') and mapping.get('indoorRH'):
+            for temp_idx in mapping['indoorTemps']:
+                for rh_idx in mapping['indoorRH']:
+                    temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
+                    rh_data = pd.to_numeric(df.iloc[:, rh_idx], errors='coerce').dropna()
+                    
+                    if len(temp_data) > 0 and len(rh_data) > 0:
+                        min_len = min(len(temp_data), len(rh_data))
+                        
+                        # Simple comfort analysis (ASHRAE comfort zone approximation)
+                        comfort_violations = 0
+                        for i in range(min_len):
+                            temp = temp_data.iloc[i]
+                            rh = rh_data.iloc[i]
+                            
+                            # Basic comfort zone check (68-78°F, 30-60% RH)
+                            if temp < 68 or temp > 78 or rh < 30 or rh > 60:
+                                comfort_violations += 1
+                        
+                        comfort_compliance = (min_len - comfort_violations) / min_len
+                        
+                        if comfort_compliance < 0.8:  # Less than 80% compliance
+                            issues.append({
+                                "severity": "low",
+                                "message": f"Poor thermal comfort compliance ({comfort_compliance:.1%})",
+                                "explanation": "Conditions frequently outside ASHRAE comfort zone may cause occupant complaints.",
+                                "suggestions": ["Review setpoint strategies", "Check zone control", "Verify sensor calibration", "Consider comfort surveys"],
+                                "issue_type": "thermal_comfort"
+                            })
+
+        # 19. Energy efficiency trending
+        if mapping.get('powerConsumption') and mapping.get('outdoorAirTemps'):
+            for power_idx in mapping['powerConsumption']:
+                for temp_idx in mapping['outdoorAirTemps']:
+                    power_data = pd.to_numeric(df.iloc[:, power_idx], errors='coerce').dropna()
+                    temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
+                    
+                    if len(power_data) > 20 and len(temp_data) > 20:
+                        min_len = min(len(power_data), len(temp_data))
+                        
+                        # Look for efficiency degradation over time
+                        first_quarter = power_data.iloc[:min_len//4].mean()
+                        last_quarter = power_data.iloc[3*min_len//4:].mean()
+                        
+                        efficiency_change = (last_quarter - first_quarter) / first_quarter
+                        
+                        if efficiency_change > 0.15:  # More than 15% increase in power consumption
+                            issues.append({
+                                "severity": "medium",
+                                "message": f"Energy efficiency degradation detected ({efficiency_change:.1%} increase)",
+                                "explanation": "Increasing power consumption over time suggests equipment degradation or fouling.",
+                                "suggestions": ["Schedule maintenance inspection", "Check coil cleanliness", "Verify refrigerant charge", "Inspect mechanical components"],
+                                "issue_type": "efficiency_degradation"
+                            })
+
+        # 20. Space pressure analysis
+        if mapping.get('spacePressure', []):
+            for idx in mapping['spacePressure']:
+                pressure_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(pressure_data) > 0:
+                    avg_pressure = pressure_data.mean()
+                    std_pressure = pressure_data.std()
+                    
+                    if abs(avg_pressure) > 0.05:  # More than 0.05" WC
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"Space pressure imbalance detected in {headers[idx]} (Avg: {avg_pressure:.3f} in WC)",
+                            "explanation": "Significant space pressure indicates ventilation imbalance affecting comfort and energy.",
+                            "suggestions": ["Balance supply and return air", "Check building envelope", "Verify exhaust systems", "Inspect damper operation"],
+                            "issue_type": "pressure_imbalance"
+                        })
+                    
+                    if std_pressure > 0.02:  # Unstable pressure
+                        issues.append({
+                            "severity": "low",
+                            "message": f"Unstable space pressure in {headers[idx]} (StdDev: {std_pressure:.3f} in WC)",
+                            "explanation": "Pressure instability suggests control or airflow issues.",
+                            "suggestions": ["Check pressure control systems", "Inspect damper operation", "Verify airflow measurements"],
+                            "issue_type": "pressure_instability"
+                        })
+
+        # 21. Refrigerant leak detection
+        for idx in mapping.get('suctionPressures', []):
+            pressure_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+            if len(pressure_data) > 50:  # Need substantial data
+                # Look for gradual pressure decline over time
+                trend_slope = np.polyfit(range(len(pressure_data)), pressure_data, 1)[0]
+                
+                if trend_slope < -0.1:  # Declining trend
+                    issues.append({
+                        "severity": "high",
+                        "message": f"Potential refrigerant leak detected in {headers[idx]} (Declining trend: {trend_slope:.2f} PSI/reading)",
+                        "explanation": "Gradual pressure decline suggests refrigerant loss through leakage.",
+                        "suggestions": ["Perform leak detection", "Check all refrigerant connections", "Inspect coil integrity", "Monitor refrigerant levels"],
+                        "issue_type": "refrigerant_leak"
+                    })
+
+        # 22. Condensate drain issues
+        if mapping.get('condensatePanLevel', []):
+            for idx in mapping['condensatePanLevel']:
+                level_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(level_data) > 0:
+                    max_level = level_data.max()
+                    avg_level = level_data.mean()
+                    
+                    if max_level > 0.8:  # High water level (assuming normalized 0-1 scale)
+                        issues.append({
+                            "severity": "high",
+                            "message": f"High condensate pan level detected in {headers[idx]} (Max: {max_level:.2f})",
+                            "explanation": "High condensate levels risk overflow and water damage.",
+                            "suggestions": ["Clear condensate drain", "Check drain pump operation", "Inspect drain lines", "Verify proper slope"],
+                            "issue_type": "condensate_drainage"
+                        })
+
+        # 23. Variable frequency drive analysis
+        if mapping.get('vfdOutput', []):
+            for idx in mapping['vfdOutput']:
+                vfd_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(vfd_data) > 0:
+                    avg_output = vfd_data.mean()
+                    max_output = vfd_data.max()
+                    min_output = vfd_data.min()
+                    
+                    if avg_output > 90:  # Consistently high VFD output
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"High VFD output detected in {headers[idx]} (Avg: {avg_output:.1f}%)",
+                            "explanation": "Consistently high VFD output suggests undersized equipment or excessive load.",
+                            "suggestions": ["Check system load requirements", "Verify equipment sizing", "Inspect for restrictions", "Consider capacity upgrades"],
+                            "issue_type": "vfd_high_output"
+                        })
+                    
+                    if max_output - min_output < 20 and avg_output > 50:  # Limited modulation
+                        issues.append({
+                            "severity": "low",
+                            "message": f"Limited VFD modulation in {headers[idx]} (Range: {max_output - min_output:.1f}%)",
+                            "explanation": "Limited VFD modulation reduces energy savings potential.",
+                            "suggestions": ["Review control programming", "Check minimum speed settings", "Verify load diversity", "Consider control optimization"],
+                            "issue_type": "vfd_limited_modulation"
+                        })
+
+        # 24. Indoor air quality indicators
+        if mapping.get('co2Levels', []):
+            for idx in mapping['co2Levels']:
+                co2_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(co2_data) > 0:
+                    max_co2 = co2_data.max()
+                    avg_co2 = co2_data.mean()
+                    
+                    if max_co2 > 1000:  # High CO2 levels
+                        issues.append({
+                            "severity": "medium",
+                            "message": f"High CO2 levels detected in {headers[idx]} (Max: {max_co2:.0f} ppm)",
+                            "explanation": "High CO2 levels indicate inadequate ventilation and poor indoor air quality.",
+                            "suggestions": ["Increase outdoor air ventilation", "Check occupancy levels", "Verify ventilation control", "Consider demand-controlled ventilation"],
+                            "issue_type": "indoor_air_quality"
+                        })
+
+        # 25. Equipment runtime optimization
+        for temp_group in [mapping.get('indoorTemps', []), mapping.get('supplyAirTemps', [])]:
+            for idx in temp_group:
+                temp_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
+                if len(temp_data) > 100:  # Need substantial data for runtime analysis
+                    # Detect equipment cycling frequency
+                    temp_changes = temp_data.diff().abs()
+                    significant_changes = (temp_changes > temp_changes.std()).sum()
+                    cycle_frequency = significant_changes / len(temp_data)
+                    
+                    if cycle_frequency > 0.15:  # More than 15% of readings show significant changes
+                        issues.append({
+                            "severity": "low",
+                            "message": f"Frequent equipment cycling detected in {headers[idx]} (Frequency: {cycle_frequency:.2f})",
+                            "explanation": "Frequent cycling reduces equipment life and energy efficiency.",
+                            "suggestions": ["Adjust control differentials", "Check equipment sizing", "Review thermostat settings", "Consider staging optimization"],
+                            "issue_type": "frequent_cycling"
+                        })
     
     return issues
 
