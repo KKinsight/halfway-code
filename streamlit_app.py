@@ -1025,6 +1025,13 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 deduplicated_issues[existing_idx]['suggestions'] = list(existing_suggestions | new_suggestions)
         
         issues = deduplicated_issues
+
+        def generate_todo_list(issues):
+        todo_items = []
+        for issue in issues:
+            for suggestion in issue.get('suggestions', []):
+                todo_items.append(f"- {suggestion} ({issue['message']})")
+        return todo_items
     
     return issues
 
@@ -1198,6 +1205,18 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                 story.append(table)
         except:
             story.append(Paragraph("Data summary statistics could not be generated.", normal_style))
+
+    if REPORTLAB_AVAILABLE:
+        from reportlab.platypus import Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+
+        styles = getSampleStyleSheet()
+        story.append(Paragraph("To-Do List for HVAC Technicians", styles["Heading2"]))
+
+        todo_list = deduplicate_todo_list(generate_hvac_todo_list(issues))
+        for item in todo_list:
+            story.append(Paragraph(f"• {item}", styles["Normal"]))
+            story.append(Spacer(1, 6))
     
     # Footer
     story.append(Spacer(1, 30))
