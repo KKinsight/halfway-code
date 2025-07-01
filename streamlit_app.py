@@ -1025,15 +1025,26 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 deduplicated_issues[existing_idx]['suggestions'] = list(existing_suggestions | new_suggestions)
         
         issues = deduplicated_issues
-
-        def generate_todo_list(issues):
-        todo_items = []
-        for issue in issues:
-            for suggestion in issue.get('suggestions', []):
-                todo_items.append(f"- {suggestion} ({issue['message']})")
-        return todo_items
     
     return issues
+
+def generate_hvac_todo_list(issues):
+    """Extract actionable suggestions from issues for technician to-do list."""
+    todo_items = []
+    for issue in issues:
+        for suggestion in issue.get('suggestions', []):
+            todo_items.append(f"{suggestion} ({issue['message']})")
+    return todo_items
+
+def deduplicate_todo_list(todo_items):
+    """Remove duplicate to-do items while preserving order."""
+    seen = set()
+    deduped = []
+    for item in todo_items:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
 
 def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     """Generate a comprehensive PDF report"""
