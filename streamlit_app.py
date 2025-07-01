@@ -995,6 +995,36 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Adjust control differentials", "Check equipment sizing", "Review thermostat settings", "Consider staging optimization"],
                             "issue_type": "frequent_cycling"
                         })
+
+        # Deduplicate similar issues
+        seen_issues = {}
+        deduplicated_issues = []
+        
+        for issue in issues:
+            # Create a key based on issue type and main message content
+            key_parts = [issue['issue_type'], issue['severity']]
+            
+            # For certain issue types, make the key more specific to avoid over-deduplication
+            if issue['issue_type'] in ['thermal_comfort', 'humidity_control', 'pressure_imbalance']:
+                # Extract the main diagnostic value from message
+                import re
+                values = re.findall(r'\d+\.?\d*', issue['message'])
+                if values:
+                    key_parts.append(values[0])  # Use first numerical value
+            
+            key = tuple(key_parts)
+            
+            if key not in seen_issues:
+                seen_issues[key] = len(deduplicated_issues)
+                deduplicated_issues.append(issue)
+            else:
+                # Merge suggestions from duplicate
+                existing_idx = seen_issues[key]
+                existing_suggestions = set(deduplicated_issues[existing_idx]['suggestions'])
+                new_suggestions = set(issue['suggestions'])
+                deduplicated_issues[existing_idx]['suggestions'] = list(existing_suggestions | new_suggestions)
+        
+        issues = deduplicated_issues
     
     return issues
 
