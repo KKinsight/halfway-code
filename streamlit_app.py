@@ -191,7 +191,7 @@ def generate_enhanced_data_summary(df_summary):
     
     try:
         # Filter for meaningful columns
-        meaningful_cols = filter_meaningful_columns(df_summary)
+        meaningful_cols = filter_meaningful_columns_strict(df_summary)
         if not meaningful_cols:
             return [['No meaningful data columns found']]
         
