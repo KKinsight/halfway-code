@@ -172,12 +172,12 @@ def filter_meaningful_columns_strict(df, zero_threshold=0.95):
                 else:
                     
             # Check for text columns that might contain meaningful non-numeric data
-            text_col = df[col].astype(str).str.lower().str.strip()
-            unique_values = text_col.unique()
+                text_col = df[col].astype(str).str.lower().str.strip()
+                unique_values = text_col.unique()
                 
             # Filter out common empty/meaningless values
-            meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
-            meaningful_values = [val for val in unique_values if val not in meaningless_values]
+                meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
+                meaningful_values = [val for val in unique_values if val not in meaningless_values]
                 
             if len(meaningful_values) > 0:
                 meaningful_columns.append(col)
