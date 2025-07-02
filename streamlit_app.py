@@ -233,7 +233,6 @@ def generate_enhanced_data_summary(df_summary):
             min_val = clean_data.min()
             max_val = clean_data.max()
             std_val = clean_data.std()
-            count = len(clean_data)
             
             # Skip rows where all stats are NaN or None
             if all(pd.isna(val) for val in [mean_val, min_val, max_val, std_val]):
@@ -245,7 +244,6 @@ def generate_enhanced_data_summary(df_summary):
                 format_value(min_val),
                 format_value(max_val),
                 format_value(std_val),
-                str(count)
             ])
         
         return stats_data if len(stats_data) > 1 else [['No meaningful statistics available after filtering']]
