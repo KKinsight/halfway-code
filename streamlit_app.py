@@ -1239,30 +1239,30 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                 story.append(Paragraph(f"<b>Recommended Actions:</b><br/>{recommendations}", normal_style))
                 story.append(Spacer(1, 12))
     
-    # Add data summary if provided
-     if df_summary is not None:
-        story.append(Spacer(1, 20))
-        story.append(Paragraph("Data Summary Statistics", heading_style))
+        # Add data summary if provided
+        if df_summary is not None:
+            story.append(Spacer(1, 20))
+            story.append(Paragraph("Data Summary Statistics", heading_style))
+            
+            stats_data = generate_enhanced_data_summary(df_summary)
         
-        stats_data = generate_enhanced_data_summary(df_summary)
-        
-        if stats_data and len(stats_data) > 1:
-            table = Table(stats_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.6*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
-            ]))
-            story.append(table)
-        else:
-            story.append(Paragraph("No meaningful data available for statistical analysis.", normal_style))
+            if stats_data and len(stats_data) > 1:
+                table = Table(stats_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.6*inch])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('FONTSIZE', (0, 1), (-1, -1), 9),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
+                ]))
+                story.append(table)
+            else:
+                story.append(Paragraph("No meaningful data available for statistical analysis.", normal_style))
             
     # Footer
     story.append(Spacer(1, 30))
