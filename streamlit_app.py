@@ -1029,12 +1029,12 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
     return issues
 
 def generate_hvac_todo_list(issues):
-    """Extract actionable suggestions from issues for technician to-do list."""
-    todo_items = []
-    for issue in issues:
-        for suggestion in issue.get('suggestions', []):
-            todo_items.append(f"{suggestion} ({issue['message']})")
-    return todo_items
+    """Extract actionable suggestions from issues for technician to-do list."""
+    todo_items = []
+    for issue in issues:
+        for suggestion in issue.get('suggestions', []):
+            todo_items.append(f"{suggestion} ({issue['message']})")
+    return todo_items
 
 def deduplicate_todo_list(todo_items):
     """Remove duplicate to-do items while preserving order."""
