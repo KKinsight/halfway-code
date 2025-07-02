@@ -138,53 +138,41 @@ def create_datetime_column(df, mapping):
         return df
 
 def filter_meaningful_columns(df):
-    """Filter out columns that are empty, contain only zeros, or only meaningless values"""
+    """Filter out columns that are empty, contain only zeros, or only 'none'/'o' values"""
     meaningful_columns = []
     
     for col in df.columns:
         if col in df.columns:
-            # First, try to convert to numeric
+            # Convert column to numeric, coercing errors to NaN
             numeric_col = pd.to_numeric(df[col], errors='coerce')
             
-            # Check if we have any non-null numeric data
-            if not numeric_col.isna().all():
+            # Check if column has any meaningful data
+            if not numeric_col.isna().all():  # Not all NaN
                 # Remove NaN values for analysis
-                clean_numeric_data = numeric_col.dropna()
+                clean_data = numeric_col.dropna()
                 
-                if len(clean_numeric_data) > 0:
-                    # Check if all values are zero
-                    if not (clean_numeric_data == 0).all():
-                        # Check if there's actual variation (not all same value)
-                        if clean_numeric_data.nunique() > 1:
-                            # Additional check: make sure it's not just variations around zero
-                            # that are essentially meaningless (like -0.01, 0, 0.01)
-                            abs_max = clean_numeric_data.abs().max()
-                            if abs_max > 0.1:  # Only include if max absolute value > 0.1
-                                meaningful_columns.append(col)
-                        elif clean_numeric_data.iloc[0] != 0:  # Single non-zero value
-                            if abs(clean_numeric_data.iloc[0]) > 0.1:
-                                meaningful_columns.append(col)
-            else:
-                # Handle non-numeric columns
-                # Convert to string and clean
-                text_col = df[col].astype(str).str.lower().str.strip()
-                unique_values = set(text_col.unique())
-                
-                # Define comprehensive set of meaningless values
-                meaningless_values = {
-                    'nan', 'none', 'null', '', '0', '0.0', 'o', 'na', 'n/a', 
-                    'nil', 'empty', ' ', '  ', 'blank', '--', '-', '.'
-                }
-                
-                # Remove meaningless values
-                meaningful_values = unique_values - meaningless_values
-                
-                # Only include if we have meaningful non-empty values
-                if len(meaningful_values) > 0:
-                    # Additional check: make sure it's not just whitespace variations
-                    real_meaningful = [val for val in meaningful_values if val.strip() != '']
-                    if len(real_meaningful) > 0:
+                if len(clean_data) > 0:
+                    # NEW: Check if ALL values are zero (this was the main issue)
+                    if (clean_data == 0).all():
+                        continue  # Skip columns with all zeros
+                    
+                    # Check if there's actual variation (not all same value)
+                    if clean_data.nunique() > 1:
                         meaningful_columns.append(col)
+                    # Also include columns with single non-zero value
+                    elif clean_data.iloc[0] != 0:
+                        meaningful_columns.append(col)
+            else:
+                # Check for text columns that might contain meaningful non-numeric data
+                text_col = df[col].astype(str).str.lower().str.strip()
+                unique_values = text_col.unique()
+                
+                # Filter out common empty/meaningless values
+                meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
+                meaningful_values = [val for val in unique_values if val not in meaningless_values]
+                
+                if len(meaningful_values) > 0:
+                    meaningful_columns.append(col)
     
     return meaningful_columns
 
