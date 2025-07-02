@@ -1028,24 +1028,6 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
     
     return issues
 
-def generate_hvac_todo_list(issues):
-    """Extract actionable suggestions from issues for technician to-do list."""
-    todo_items = []
-    for issue in issues:
-        for suggestion in issue.get('suggestions', []):
-            todo_items.append(f"{suggestion} ({issue['message']})")
-    return todo_items
-
-def deduplicate_todo_list(todo_items):
-    """Remove duplicate to-do items while preserving order."""
-    seen = set()
-    deduped = []
-    for item in todo_items:
-        if item not in seen:
-            deduped.append(item)
-            seen.add(item)
-    return deduped
-
 def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     """Generate a comprehensive PDF report"""
     if not REPORTLAB_AVAILABLE:
@@ -1216,18 +1198,6 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                 story.append(table)
         except:
             story.append(Paragraph("Data summary statistics could not be generated.", normal_style))
-
-    if REPORTLAB_AVAILABLE:
-        from reportlab.platypus import Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet
-
-        styles = getSampleStyleSheet()
-        story.append(Paragraph("To-Do List for HVAC Technicians", styles["Heading2"]))
-
-        todo_list = deduplicate_todo_list(generate_hvac_todo_list(issues))
-        for item in todo_list:
-            story.append(Paragraph(f"• {item}", styles["Normal"]))
-            story.append(Spacer(1, 6))
     
     # Footer
     story.append(Spacer(1, 30))
