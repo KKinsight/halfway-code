@@ -141,6 +141,9 @@ def filter_meaningful_columns(df):
     """Filter out columns that are empty, contain only zeros, or only 'none'/'o' values"""
     meaningful_columns = []
     
+    df = pd.read_csv(file_path, skiprows=[1])
+    return df
+    
     for col in df.columns:
         if col in df.columns:
             # Convert column to numeric, coercing errors to NaN
