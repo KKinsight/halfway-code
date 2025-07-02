@@ -338,7 +338,8 @@ def check_comfort_conditions(df, headers, mapping):
     
     # Check relative humidity
     for idx in mapping.get('indoorRH', []):
-        if headers[idx] == '1SprHtSP':
+        col_name = headers[idx].lower()
+        if 'sprheat' in col_name or 'sprhtsp' in col_name:
             continue
         humidity_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
         if len(humidity_data) > 0:
