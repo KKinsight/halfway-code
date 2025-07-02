@@ -169,7 +169,7 @@ def filter_meaningful_columns_strict(df, zero_threshold=0.95):
                         meaningful_columns.append(col)
                     elif clean_data.iloc[0] != 0:
                         meaningful_columns.append(col)
-            else:
+                else:
                 # Check for text columns that might contain meaningful non-numeric data
                 text_col = df[col].astype(str).str.lower().str.strip()
                 unique_values = text_col.unique()
@@ -186,16 +186,13 @@ def filter_meaningful_columns_strict(df, zero_threshold=0.95):
 def generate_enhanced_data_summary(df_summary):
     """Generate data summary with filtered meaningful columns"""
     if df_summary is None or df_summary.empty:
-        return [['No data available for analysis']]
+    return [['No data available for analysis']]
     
     try:
         # Filter for meaningful columns
         meaningful_cols = filter_meaningful_columns(df_summary)
-        
         if not meaningful_cols:
             return [['No meaningful data columns found']]
-        
-        print(f"Found {len(meaningful_cols)} meaningful columns: {meaningful_cols[:10]}...")  # Debug output
         
         # Create dataframe with only meaningful columns
         meaningful_df = df_summary[meaningful_cols].copy()
@@ -206,10 +203,9 @@ def generate_enhanced_data_summary(df_summary):
             numeric_series = pd.to_numeric(meaningful_df[col], errors='coerce')
             if not numeric_series.isna().all():
                 clean_data = numeric_series.dropna()
-                if len(clean_data) > 0:
-                    # Additional filtering: only include if values are significant
-                    if clean_data.abs().max() > 0.1 and clean_data.nunique() > 1:
-                        numeric_data[col] = clean_data
+                    if len(clean_data) > 0:
+                        if clean_data.abs().max() > 0.1 and clean_data.nunique() > 1:
+                            numeric_data[col] = clean_data
         
         if not numeric_data:
             return [['No meaningful numeric data available for statistical analysis']]
@@ -217,42 +213,44 @@ def generate_enhanced_data_summary(df_summary):
         # Generate statistics table
         stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev', 'Count']]
         
-        # Sort columns by name for consistency
-        sorted_cols = sorted(numeric_data.keys())
+        def format_value(val): 
+            if pd.isna(val):
+                return "None"
+            if abs(val) >= 100:
+                return f"{val:.1f}"
+            elif abs(val) >= 1:
+                return f"{val:.2f}"
+            else:
+                return f"{val:.3f}"
         
-        for col in sorted_cols[:15]:  # Limit to first 15 meaningful columns
+        for col in sorted(numeric_data.keys()):
             clean_data = numeric_data[col]
-            
+            if clean_data.empty:
+                continue
+
             mean_val = clean_data.mean()
             min_val = clean_data.min()
             max_val = clean_data.max()
             std_val = clean_data.std()
             count = len(clean_data)
             
-            # Format values appropriately
-            def format_value(val):
-                if abs(val) >= 1000:
-                    return f"{val:.1f}"
-                elif abs(val) >= 100:
-                    return f"{val:.1f}"
-                elif abs(val) >= 1:
-                    return f"{val:.2f}"
-                else:
-                    return f"{val:.3f}"
-            
+            # Skip rows where all stats are NaN or None
+            if all(pd.isna(val) for val in [mean_val, min_val, max_val, std_val]):
+                continue
+                
             stats_data.append([
-                col[:30],  # Truncate long column names
+                col[:30],
                 format_value(mean_val),
                 format_value(min_val),
                 format_value(max_val),
-                format_value(std_val) if not pd.isna(std_val) else "0.000",
+                format_value(std_val),
                 str(count)
             ])
         
         return stats_data if len(stats_data) > 1 else [['No meaningful statistics available after filtering']]
-        
+    
     except Exception as e:
-        print(f"Error in generate_enhanced_data_summary: {str(e)}")  # Debug output
+        print(f"Error in generate_enhanced_data_summary: {str(e)}")
         return [['Error generating statistics:', str(e)]]
 
 # Updated integration code for the PDF report function
