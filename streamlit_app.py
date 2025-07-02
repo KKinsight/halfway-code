@@ -212,7 +212,7 @@ def generate_enhanced_data_summary(df_summary):
             return [['No meaningful numeric data available for statistical analysis']]
         
         # Generate statistics table
-        stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev', 'Count']]
+        stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev']]
         
         def format_value(val): 
             if pd.isna(val):
