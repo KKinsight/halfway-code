@@ -1037,14 +1037,14 @@ def generate_hvac_todo_list(issues):
     return todo_items
 
 def deduplicate_todo_list(todo_items):
-    """Remove duplicate to-do items while preserving order."""
-    seen = set()
-    deduped = []
-    for item in todo_items:
-        if item not in seen:
-            deduped.append(item)
-            seen.add(item)
-    return deduped
+    """Remove duplicate to-do items while preserving order."""
+    seen = set()
+    deduped = []
+    for item in todo_items:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
 
 def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     """Generate a comprehensive PDF report"""
