@@ -137,6 +137,96 @@ def create_datetime_column(df, mapping):
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
 
+def filter_meaningful_columns(df):
+    """Filter out columns that are empty, contain only zeros, or only 'none'/'o' values"""
+    meaningful_columns = []
+    
+    for col in df.columns:
+        if col in df.columns:
+            # Convert column to numeric, coercing errors to NaN
+            numeric_col = pd.to_numeric(df[col], errors='coerce')
+            
+            # Check if column has any meaningful data
+            if not numeric_col.isna().all():  # Not all NaN
+                # Remove NaN values for analysis
+                clean_data = numeric_col.dropna()
+                
+                if len(clean_data) > 0:
+                    # Check if all values are zero
+                    if not (clean_data == 0).all():
+                        # Check if there's actual variation (not all same value)
+                        if clean_data.nunique() > 1 or clean_data.iloc[0] != 0:
+                            meaningful_columns.append(col)
+            else:
+                # Check for text columns that might contain meaningful non-numeric data
+                text_col = df[col].astype(str).str.lower().str.strip()
+                unique_values = text_col.unique()
+                
+                # Filter out common empty/meaningless values
+                meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
+                meaningful_values = [val for val in unique_values if val not in meaningless_values]
+                
+                if len(meaningful_values) > 0:
+                    meaningful_columns.append(col)
+    
+    return meaningful_columns
+
+# Modified section for the generate_pdf_report function
+def generate_enhanced_data_summary(df_summary):
+    """Generate data summary with filtered meaningful columns"""
+    if df_summary is None or df_summary.empty:
+        return None
+    
+    try:
+        # Filter for meaningful columns
+        meaningful_cols = filter_meaningful_columns(df_summary)
+        
+        if not meaningful_cols:
+            return [['No meaningful data columns found']]
+        
+        # Create numeric dataframe with only meaningful columns
+        meaningful_df = df_summary[meaningful_cols]
+        numeric_df = meaningful_df.select_dtypes(include=[np.number])
+        
+        # Convert non-numeric meaningful columns to numeric where possible
+        for col in meaningful_cols:
+            if col not in numeric_df.columns:
+                numeric_series = pd.to_numeric(meaningful_df[col], errors='coerce')
+                if not numeric_series.isna().all():
+                    numeric_df[col] = numeric_series
+        
+        if numeric_df.empty:
+            return [['No numeric data available for analysis']]
+        
+        # Generate statistics table
+        stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev', 'Count']]
+        
+        for col in numeric_df.columns[:15]:  # Limit to first 15 meaningful columns
+            clean_data = numeric_df[col].dropna()
+            
+            if len(clean_data) > 0:
+                mean_val = clean_data.mean()
+                min_val = clean_data.min()
+                max_val = clean_data.max()
+                std_val = clean_data.std()
+                count = len(clean_data)
+                
+                # Only include if there's actual variation or non-zero values
+                if not (mean_val == 0 and min_val == 0 and max_val == 0):
+                    stats_data.append([
+                        col[:25],  # Truncate long column names
+                        f"{mean_val:.2f}",
+                        f"{min_val:.2f}",
+                        f"{max_val:.2f}",
+                        f"{std_val:.2f}" if not pd.isna(std_val) else "0",
+                        str(count)
+                    ])
+        
+        return stats_data if len(stats_data) > 1 else [['No meaningful statistics available']]
+        
+    except Exception as e:
+        return [['Error generating statistics:', str(e)]]
+
 def check_comfort_conditions(df, headers, mapping):
     """Check indoor comfort conditions"""
     results = []
@@ -1150,55 +1240,30 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                 story.append(Spacer(1, 12))
     
     # Add data summary if provided
-    if df_summary is not None:
+     if df_summary is not None:
         story.append(Spacer(1, 20))
         story.append(Paragraph("Data Summary Statistics", heading_style))
         
-        try:
-            numeric_df = df_summary.select_dtypes(include=[np.number])
-            if not numeric_df.empty:
-                stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev']]
-                for col in numeric_df.columns[:10]:
-                    stats_data.append([
-                        col,
-                        f"{numeric_df[col].mean():.2f}",
-                        f"{numeric_df[col].min():.2f}",
-                        f"{numeric_df[col].max():.2f}",
-                        f"{numeric_df[col].std():.2f}"
-                    ])
-
-            numeric_df = df_summary.select_dtypes(include=[np.number])
-            if not numeric_df.empty:
-                stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev']]
-                for col in numeric_df.columns[:10]:
-                    mean = numeric_df[col].mean()
-                    min_val = numeric_df[col].min()
-                    max_val = numeric_df[col].max()
-                    std_dev = numeric_df[col].std()
-                    if not (mean == 0 and min_val == 0 and max_val == 0 and std_dev == 0):
-                        stats_data.append([
-                            col,
-                                f"{mean:.2f}",
-                                f"{min_val:.2f}",
-                                f"{max_val:.2f}",
-                                f"{std_dev:.2f}"
-                            ])
-  
-                table = Table(stats_data)
-                table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 12),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-                story.append(table)
-        except:
-            story.append(Paragraph("Data summary statistics could not be generated.", normal_style))
-    
+        stats_data = generate_enhanced_data_summary(df_summary)
+        
+        if stats_data and len(stats_data) > 1:
+            table = Table(stats_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.6*inch])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE')
+            ]))
+            story.append(table)
+        else:
+            story.append(Paragraph("No meaningful data available for statistical analysis.", normal_style))
+            
     # Footer
     story.append(Spacer(1, 30))
     story.append(Paragraph("Report Notes", heading_style))
