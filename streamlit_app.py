@@ -187,7 +187,7 @@ def filter_meaningful_columns_strict(df, zero_threshold=0.95):
 def generate_enhanced_data_summary(df_summary):
     """Generate data summary with filtered meaningful columns"""
     if df_summary is None or df_summary.empty:
-    return [['No data available for analysis']]
+        return [['No data available for analysis']]
     
     try:
         # Filter for meaningful columns
