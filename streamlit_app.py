@@ -204,9 +204,9 @@ def generate_enhanced_data_summary(df_summary):
             numeric_series = pd.to_numeric(meaningful_df[col], errors='coerce')
             if not numeric_series.isna().all():
                 clean_data = numeric_series.dropna()
-                    if len(clean_data) > 0:
-                        if clean_data.abs().max() > 0.1 and clean_data.nunique() > 1:
-                            numeric_data[col] = clean_data
+                if len(clean_data) > 0:
+                    if clean_data.abs().max() > 0.1 and clean_data.nunique() > 1:
+                        numeric_data[col] = clean_data
         
         if not numeric_data:
             return [['No meaningful numeric data available for statistical analysis']]
