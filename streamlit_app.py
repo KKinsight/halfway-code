@@ -137,8 +137,11 @@ def create_datetime_column(df, mapping):
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
 
-def filter_meaningful_columns(df):
-    """Filter out columns that are empty, contain only zeros, or only 'none'/'o' values"""
+def filter_meaningful_columns_strict(df, zero_threshold=0.95):
+    """
+    Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
+    zero_threshold: if more than this percentage of values are zero, exclude the column
+    """
     meaningful_columns = []
     
     for col in df.columns:
@@ -152,14 +155,18 @@ def filter_meaningful_columns(df):
                 clean_data = numeric_col.dropna()
                 
                 if len(clean_data) > 0:
-                    # NEW: Check if ALL values are zero (this was the main issue)
+                    # Check if ALL values are zero
                     if (clean_data == 0).all():
                         continue  # Skip columns with all zeros
                     
-                    # Check if there's actual variation (not all same value)
+                    # NEW: Check if mostly zeros (optional stricter filtering)
+                    zero_percentage = (clean_data == 0).sum() / len(clean_data)
+                    if zero_percentage > zero_threshold:
+                        continue  # Skip columns that are mostly zeros
+                    
+                    # Check if there's actual variation
                     if clean_data.nunique() > 1:
                         meaningful_columns.append(col)
-                    # Also include columns with single non-zero value
                     elif clean_data.iloc[0] != 0:
                         meaningful_columns.append(col)
             else:
