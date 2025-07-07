@@ -1570,7 +1570,8 @@ def create_time_series_plots_filtered(df, headers, mapping):
 
     indoor_rh_indices = [
         idx for idx in filtered_mapping.get('indoorRH', [])
-        if 'sprheat' not in filtered_headers[idx].lower() and 'sprhtsp' not in filtered_headers[idx].lower()
+        if 'sprheat' not in filtered_headers[idx].lower() 
+            and 'sprhtsp' not in filtered_headers[idx].lower()
     ]
     outdoor_rh_indices = filtered_mapping.get('outdoorRH', [])
     colors = ['teal', 'magenta', 'olive', 'coral', 'gray', 'gold']
