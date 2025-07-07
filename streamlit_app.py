@@ -192,6 +192,7 @@ def generate_enhanced_data_summary(df_summary):
     try:
         # Filter for meaningful columns
         meaningful_cols = filter_meaningful_columns_strict(df_summary)
+        meaningful_cols = [col for col in meaningful_cols if col != 'parsed_datetime']
         if not meaningful_cols:
             return [['No meaningful data columns found']]
         
