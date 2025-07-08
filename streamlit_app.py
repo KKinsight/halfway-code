@@ -124,7 +124,7 @@ def convert_date_format(date_str):
                 return date_str  # Return original if month not recognized
             
             # Assume current year if not specified (you can modify this)
-            year = 2025  # or use current year: datetime.now().year
+            year = 2024  # or use current year: datetime.now().year
             
             # Return a date string that pandas can parse unambiguously
             return f"{year}-{month_num:02d}-{int(day):02d}"
@@ -150,12 +150,37 @@ def create_datetime_column(df, mapping):
             # Combine date and time
             datetime_str = converted_dates + ' ' + time_col
             
-            # Use explicit format to avoid ambiguity
-            df['parsed_datetime'] = pd.to_datetime(datetime_str, format='%Y-%m-%d %H:%M', errors='coerce')
+            # Try multiple datetime formats
+            df['parsed_datetime'] = None
             
-            # If that fails, try without format specification
+            # First try with explicit format
+            try:
+                df['parsed_datetime'] = pd.to_datetime(datetime_str, format='%Y-%m-%d %H:%M', errors='coerce')
+            except:
+                pass
+            
+            # If that didn't work or resulted in all NaNs, try without format
             if df['parsed_datetime'].isna().all():
-                df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+                try:
+                    df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+                except:
+                    pass
+            
+            # Debug: Show some sample datetime strings and results
+            if 'st' in globals():  # Only if streamlit is available
+                valid_count = df['parsed_datetime'].notna().sum()
+                total_count = len(df)
+                st.write(f"DateTime parsing: {valid_count}/{total_count} successful")
+                
+                # Show first few examples
+                sample_data = pd.DataFrame({
+                    'Original_Date': date_col.head(5),
+                    'Original_Time': time_col.head(5),
+                    'Combined': datetime_str.head(5),
+                    'Parsed': df['parsed_datetime'].head(5)
+                })
+                st.write("Sample datetime parsing:")
+                st.dataframe(sample_data)
             
         elif mapping['date'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
@@ -168,7 +193,8 @@ def create_datetime_column(df, mapping):
         return df
         
     except Exception as e:
-        st.warning(f"Could not parse datetime: {e}. Using sequential index.")
+        if 'st' in globals():
+            st.warning(f"Could not parse datetime: {e}. Using sequential index.")
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
         
