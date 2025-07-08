@@ -94,8 +94,10 @@ def parse_headers_enhanced(headers):
     
     return mapping
 
+
 def convert_date_format(date_str):
     """Convert '31-May' format to proper datetime format"""
+    
     if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
         return None
     
@@ -105,7 +107,7 @@ def convert_date_format(date_str):
     if '/' in date_str or len(date_str) > 10:
         return date_str
     
-    # Handle '31-May' format (day-month)
+    # Handle '31-May' or '1-Jun' format (day-month)
     if '-' in date_str and len(date_str.split('-')) == 2:
         parts = date_str.split('-')
         
@@ -125,8 +127,8 @@ def convert_date_format(date_str):
             if month_num is None:
                 return date_str  # Return original if month not recognized
             
-            # Assume current year if not specified (you can modify this)
-            year = 2025  # or use current year: datetime.now().year
+            # Use 2024 as the year (adjust based on your data)
+            year = 2024
             
             # Return a date string that pandas can parse unambiguously
             return f"{year}-{month_num:02d}-{int(day):02d}"
@@ -147,8 +149,8 @@ def convert_date_format(date_str):
             if month_num is None:
                 return date_str  # Return original if month not recognized
             
-            # Assume current year if not specified (you can modify this)
-            year = 2024  # or use current year: datetime.now().year
+            # Use 2024 as the year (adjust based on your data)
+            year = 2024
             
             # Return a date string that pandas can parse unambiguously
             return f"{year}-{month_num:02d}-{int(day):02d}"
@@ -157,56 +159,83 @@ def convert_date_format(date_str):
     return date_str
 
 def create_datetime_column(df, mapping):
-    """Create a datetime column from date/time or datetime columns, with
-    support for '31-May' format"""
+    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     
     try:
-        if mapping['datetime'] is not None:
+        if mapping.get('datetime') is not None:
             df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
-            
-        elif mapping['date'] is not None and mapping['time'] is not None:
+        
+        elif mapping.get('date') is not None and mapping.get('time') is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
             
             # Debug: Show original date values
-            if 'st' in globals():
-                st.write("Original date values (first 10):")
-                st.write(date_col.head(10).tolist())
+            print("Original date values (first 10):")
+            print(date_col.head(10).tolist())
             
             # Convert dates using our helper function
             converted_dates = date_col.apply(convert_date_format)
             
-            # Debug: Show converted date values
-            if 'st' in globals():
-                st.write("Converted date values (first 10):")
-                st.write(converted_dates.head(10).tolist())
+            # Debug: Show converted date values  
+            print("Converted date values (first 10):")
+            print(converted_dates.head(10).tolist())
             
             # Combine date and time
-            datetime_str = converted_dates + ' ' + time_col
+            datetime_str = converted_dates.astype(str) + ' ' + time_col.astype(str)
             
-            # Try multiple datetime formats
+            # Debug: Show combined datetime strings
+            print("Combined datetime strings (first 10):")
+            print(datetime_str.head(10).tolist())
+            
+            # Parse datetime with multiple fallback methods
             df['parsed_datetime'] = None
             
-            # First try with explicit format
+            # Method 1: Try with explicit format
             try:
                 df['parsed_datetime'] = pd.to_datetime(datetime_str, format='%Y-%m-%d %H:%M', errors='coerce')
-            except:
-                pass
+                print(f"Method 1 successful: {df['parsed_datetime'].notna().sum()} valid dates")
+            except Exception as e:
+                print(f"Method 1 failed: {e}")
             
-            # If that didn't work or resulted in all NaNs, try without format
+            # Method 2: If that didn't work, try without format specification
             if df['parsed_datetime'].isna().all():
                 try:
                     df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
-                except:
-                    pass
+                    print(f"Method 2 successful: {df['parsed_datetime'].notna().sum()} valid dates")
+                except Exception as e:
+                    print(f"Method 2 failed: {e}")
             
-            # Debug: Show some sample datetime strings and results
-            if 'st' in globals():
-                valid_count = df['parsed_datetime'].notna().sum()
-                total_count = len(df)
-                st.write(f"DateTime parsing: {valid_count}/{total_count} successful")
-                
-                # Show first few examples
+            # Method 3: Try parsing each component separately
+            if df['parsed_datetime'].isna().all():
+                try:
+                    for i in range(len(df)):
+                        if pd.notna(converted_dates.iloc[i]) and pd.notna(time_col.iloc[i]):
+                            try:
+                                date_part = pd.to_datetime(converted_dates.iloc[i]).date()
+                                time_str = time_col.iloc[i]
+                                
+                                # Handle time format (assuming H:MM or HH:MM)
+                                if ':' in time_str:
+                                    time_parts = time_str.split(':')
+                                    hour = int(time_parts[0])
+                                    minute = int(time_parts[1])
+                                    
+                                    full_datetime = pd.Timestamp.combine(date_part, pd.Timestamp(hour=hour, minute=minute).time())
+                                    df.loc[i, 'parsed_datetime'] = full_datetime
+                            except:
+                                continue
+                    print(f"Method 3 successful: {df['parsed_datetime'].notna().sum()} valid dates")
+                except Exception as e:
+                    print(f"Method 3 failed: {e}")
+            
+            # Final validation
+            valid_count = df['parsed_datetime'].notna().sum()
+            total_count = len(df)
+            print(f"Final result: {valid_count}/{total_count} successful datetime conversions")
+            
+            # Show first few successful conversions
+            if valid_count > 0:
+                print("First 5 successful conversions:")
                 sample_data = pd.DataFrame({
                     'Original_Date': date_col.head(5),
                     'Original_Time': time_col.head(5),
@@ -214,24 +243,51 @@ def create_datetime_column(df, mapping):
                     'Combined': datetime_str.head(5),
                     'Parsed': df['parsed_datetime'].head(5)
                 })
-                st.write("Sample datetime parsing:")
-                st.dataframe(sample_data)
-            
-        elif mapping['date'] is not None:
+                print(sample_data.to_string())
+        
+        elif mapping.get('date') is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             date_col = date_col.apply(convert_date_format)
             df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
-            
+        
         else:
+            # Fallback to sequential timestamps
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-            
+            print("Used fallback sequential timestamps")
+        
         return df
         
     except Exception as e:
-        if 'st' in globals():
-            st.warning(f"Could not parse datetime: {e}. Using sequential index.")
+        print(f"Error in create_datetime_column: {e}")
+        # Fallback to sequential timestamps
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
+
+# Test with your sample data
+if __name__ == "__main__":
+    # Sample data from your CSV
+    test_data = {
+        'Date': ['31-May', '1-Jun', '2-Jun', '3-Jun', '4-Jun'],
+        'Time': ['1:33', '3:34', '13:05', '14:05', '8:35'],
+        'Space': [0, 0, 0, 0, 0],
+        'InRH': [0, 0, 0, 0, 0],
+        'SAT': [62.2, 62.4, 61.2, 50.1, 52.8]
+    }
+    
+    df = pd.DataFrame(test_data)
+    
+    # Mock mapping (adjust indices based on your actual data structure)
+    mapping = {
+        'date': 0,      # Date column index
+        'time': 1,      # Time column index
+        'datetime': None
+    }
+    
+    print("Testing date conversion:")
+    df = create_datetime_column(df, mapping)
+    
+    print("\nFinal DataFrame:")
+    print(df[['Date', 'Time', 'parsed_datetime']].to_string())
 
 def filter_meaningful_columns_strict(df, zero_threshold=0.95):
     """
