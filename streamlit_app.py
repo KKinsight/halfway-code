@@ -94,44 +94,70 @@ def parse_headers_enhanced(headers):
     
     return mapping
 
+def convert_date_format(date_str):
+    """Convert '31-May' format to '2024-05-31' format"""
+    if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
+        return None
+    
+    date_str = str(date_str).strip()
+    
+    # If it's already in a standard format, return as-is
+    if '/' in date_str or len(date_str) > 10:
+        return date_str
+    
+    # Handle '31-May' format
+    if '-' in date_str and len(date_str.split('-')) == 2:
+        parts = date_str.split('-')
+        if parts[0].isdigit() and len(parts[0]) <= 2:  # Day is numeric and reasonable length
+            day = parts[0]
+            month = parts[1]
+            
+            # Convert month name to number
+            month_map = {
+                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+            }
+            
+            month_num = month_map.get(month.lower()[:3], month)
+            
+            # Assume current year if not specified (you can modify this)
+            year = '2024'  # or use current year: str(datetime.now().year)
+            
+            return f"{year}-{month_num}-{day.zfill(2)}"
+    
+    # Return original if no conversion needed
+    return date_str
+
 def create_datetime_column(df, mapping):
-    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
+    """Create a datetime column from date/time or datetime columns, with
+    support for '31-May' format"""
+    
     try:
         if mapping['datetime'] is not None:
             df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
+            
         elif mapping['date'] is not None and mapping['time'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
-
-            # Convert '31-May' to '2024-05-31'
-            def convert_date(date_str):
-                if pd.isna(date_str) or date_str == 'nan':
-                    return None
-                if '-' in date_str and len(date_str.split('-')) == 2:
-                    parts = date_str.split('-')
-                    if parts[0].isdigit():
-                        day = parts[0]
-                        month = parts[1]
-                        # Convert month name to number
-                        month_map = {
-                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-                        }
-                        month_num = month_map.get(month.lower()[:3], month)
-                        return f"2024-{month_num}-{day.zfill(2)}"
-                return date_str
-
-            date_col = date_col.apply(convert_date)
+            
+            # Convert dates using our helper function
+            date_col = date_col.apply(convert_date_format)
+            
+            # Combine date and time
             datetime_str = date_col + ' ' + time_col
             df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+            
         elif mapping['date'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            date_col = date_col.apply(lambda x: convert_date(x) if callable(convert_date) else x)
+            date_col = date_col.apply(convert_date_format)
             df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
+            
         else:
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+            
         return df
+        
     except Exception as e:
         st.warning(f"Could not parse datetime: {e}. Using sequential index.")
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
@@ -1416,13 +1442,14 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
     Filter the dataframe to only include meaningful columns for analysis and plotting
     Returns filtered dataframe and updated mapping
     """
+    
     # Get meaningful columns (excluding datetime and source_file)
     exclude_prefixes = ['SAT-StPt-Clg', 'SAT-StPt-Dehum', 'SAT-StPt-Htg']
     exclude_cols = ['parsed_datetime', 'source_file'] + [
         col for col in df.columns if any(col.startswith(prefix) for prefix in exclude_prefixes)
     ]
-    analysis_df = df.drop(columns=[col for col in exclude_cols if col in df.columns])
     
+    analysis_df = df.drop(columns=[col for col in exclude_cols if col in df.columns])
     meaningful_cols = filter_meaningful_columns_strict(analysis_df, zero_threshold)
     
     # Create filtered dataframe with meaningful columns plus datetime
