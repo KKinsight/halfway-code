@@ -1845,7 +1845,7 @@ if uploaded_files:
                         uploaded_file.seek(0)
                         lines = uploaded_file.read().decode(encoding).splitlines()
                         if len(lines) > 1:
-                            lines.pop(1)  # Remove units row
+                            lines.pop(1) # Remove units row
                         df = pd.read_csv(StringIO("\n".join(lines)))
                         break
                     except Exception:
