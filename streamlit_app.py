@@ -780,25 +780,6 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check airflow immediately", "Inspect air filters", "Verify proper refrigerant charge", "Check defrost operation"],
                     "issue_type": "icing_risk"
                 })
-    
-    # 7. Control system hunting
-    for temp_group in [mapping.get('indoorTemps', []), mapping.get('supplyAirTemps', [])]:
-        for idx in temp_group:
-            col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
-            if len(col_data) > 20:
-                # Detect oscillating behavior
-                changes = col_data.diff()
-                sign_changes = ((changes > 0).astype(int).diff() != 0).sum()
-                oscillation_rate = sign_changes / len(col_data)
-                
-                if oscillation_rate > 0.3:  # High rate of direction changes
-                    issues.append({
-                        "severity": "medium",
-                        "message": f"Control hunting detected in {headers[idx]}",
-                        "explanation": "Frequent temperature oscillations suggest control system instability.",
-                        "suggestions": ["Adjust control parameters", "Check sensor calibration", "Verify control logic", "Consider PID tuning"],
-                        "issue_type": "control_hunting"
-                    })
 
     # 8. Dew point analysis for moisture control
         for idx in mapping.get('spaceDewPoints', []):
