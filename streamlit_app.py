@@ -105,26 +105,23 @@ def create_datetime_column(df, mapping):
 
             # Convert '31-May' to '2024-05-31'
             def convert_date(date_str):
-                if pd.isna(date_str) or str(date_str).lower() in ['nan', 'none', '']:
+                if pd.isna(date_str) or date_str == 'nan':
                     return None
-                try:
-                    # Try parsing standard formats first
-                    return pd.to_datetime(date_str, errors='raise')
-                except Exception:
-                    # Try parsing '31-May' style
-                    if '-' in date_str and len(date_str.split('-')) == 2:
-                        parts = date_str.split('-')
-                        if parts[0].isdigit():
-                            day = parts[0]
-                            month = parts[1]
-                            month_map = {
-                                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-                            }
-                            month_num = month_map.get(month.lower()[:3], month)
-                            return f"2024-{month_num}-{day.zfill(2)}"
+                if '-' in date_str and len(date_str.split('-')) == 2:
+                    parts = date_str.split('-')
+                    if parts[0].isdigit():
+                        day = parts[0]
+                        month = parts[1]
+                        # Convert month name to number
+                        month_map = {
+                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                        }
+                        month_num = month_map.get(month.lower()[:3], month)
+                        return f"2024-{month_num}-{day.zfill(2)}"
                 return date_str
+
             date_col = date_col.apply(convert_date)
             datetime_str = date_col + ' ' + time_col
             df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
