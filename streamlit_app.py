@@ -95,7 +95,7 @@ def parse_headers_enhanced(headers):
     return mapping
 
 def convert_date_format(date_str):
-    """Convert '31-May' format to '2024-05-31' format"""
+    """Convert '31-May' format to proper datetime format"""
     if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
         return None
     
@@ -114,17 +114,20 @@ def convert_date_format(date_str):
             
             # Convert month name to number
             month_map = {
-                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
             }
             
-            month_num = month_map.get(month.lower()[:3], month)
+            month_num = month_map.get(month.lower()[:3])
+            if month_num is None:
+                return date_str  # Return original if month not recognized
             
             # Assume current year if not specified (you can modify this)
-            year = '2024'  # or use current year: str(datetime.now().year)
+            year = 2024  # or use current year: datetime.now().year
             
-            return f"{year}-{month_num}-{day.zfill(2)}"
+            # Return a date string that pandas can parse unambiguously
+            return f"{year}-{month_num:02d}-{int(day):02d}"
     
     # Return original if no conversion needed
     return date_str
@@ -142,11 +145,17 @@ def create_datetime_column(df, mapping):
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
             
             # Convert dates using our helper function
-            date_col = date_col.apply(convert_date_format)
+            converted_dates = date_col.apply(convert_date_format)
             
             # Combine date and time
-            datetime_str = date_col + ' ' + time_col
-            df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+            datetime_str = converted_dates + ' ' + time_col
+            
+            # Use explicit format to avoid ambiguity
+            df['parsed_datetime'] = pd.to_datetime(datetime_str, format='%Y-%m-%d %H:%M', errors='coerce')
+            
+            # If that fails, try without format specification
+            if df['parsed_datetime'].isna().all():
+                df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
             
         elif mapping['date'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
@@ -162,7 +171,7 @@ def create_datetime_column(df, mapping):
         st.warning(f"Could not parse datetime: {e}. Using sequential index.")
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
-
+        
 def filter_meaningful_columns_strict(df, zero_threshold=0.95):
     """
     Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
@@ -1482,7 +1491,7 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
             updated_mapping[category] = updated_indices
     
     return filtered_df, updated_mapping
-
+    
 # Updated create_time_series_plots function
 def create_time_series_plots_filtered(df, headers, mapping):
     """Create temperature vs time and pressure vs time plots with filtered data"""
