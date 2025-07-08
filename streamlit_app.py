@@ -126,7 +126,7 @@ def convert_date_format(date_str):
                 return date_str  # Return original if month not recognized
             
             # Assume current year if not specified (you can modify this)
-            year = 2024  # or use current year: datetime.now().year
+            year = 2025  # or use current year: datetime.now().year
             
             # Return a date string that pandas can parse unambiguously
             return f"{year}-{month_num:02d}-{int(day):02d}"
@@ -1482,6 +1482,11 @@ def read_csv_with_encoding(uploaded_file):
     uploaded_file.seek(0)
     content = uploaded_file.read().decode('utf-8', errors='replace')
     df = pd.read_csv(StringIO(content))
+    
+    # Skip units row if present
+    if len(df) > 1 and df.iloc[0].astype(str).str.contains('°F|%|PSI|WG', case=False, na=False).any():
+        df = df.drop(index=0).reset_index(drop=True)
+    
     return df, content
 
 def get_legend_label(header):
