@@ -1417,7 +1417,10 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
     Returns filtered dataframe and updated mapping
     """
     # Get meaningful columns (excluding datetime and source_file)
-    exclude_cols = ['parsed_datetime', 'source_file', 'SAT-StPt-Clg', 'SAT-StPt-Dehum', 'SAT-StPt-Htg']
+    exclude_prefixes = ['SAT-StPt-Clg', 'SAT-StPt-Dehum', 'SAT-StPt-Htg']
+    exclude_cols = ['parsed_datetime', 'source_file'] + [
+        col for col in df.columns if any(col.startswith(prefix) for prefix in exclude_prefixes)
+    ]
     analysis_df = df.drop(columns=[col for col in exclude_cols if col in df.columns])
     
     meaningful_cols = filter_meaningful_columns_strict(analysis_df, zero_threshold)
