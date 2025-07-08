@@ -122,7 +122,7 @@ def create_datetime_column(df, mapping):
                                 'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
                                 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
                             }
-                                    month_num = month_map.get(month.lower()[:3], month)
+                            month_num = month_map.get(month.lower()[:3], month)
                             return f"2024-{month_num}-{day.zfill(2)}"
                 return date_str
             date_col = date_col.apply(convert_date)
