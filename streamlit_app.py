@@ -124,7 +124,7 @@ def convert_date_format(date_str):
                 return date_str  # Return original if month not recognized
             
             # Assume current year if not specified (you can modify this)
-            year = 2024  # or use current year: datetime.now().year
+            year = 2025  # or use current year: datetime.now().year
             
             # Return a date string that pandas can parse unambiguously
             return f"{year}-{month_num:02d}-{int(day):02d}"
