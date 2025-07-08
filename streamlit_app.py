@@ -105,12 +105,36 @@ def convert_date_format(date_str):
     if '/' in date_str or len(date_str) > 10:
         return date_str
     
-    # Handle '31-May' format
+    # Handle '31-May' format (day-month)
     if '-' in date_str and len(date_str.split('-')) == 2:
         parts = date_str.split('-')
-        if parts[0].isdigit() and len(parts[0]) <= 2:  # Day is numeric and reasonable length
+        
+        # Check if first part is day (numeric) and second is month (text)
+        if parts[0].isdigit() and len(parts[0]) <= 2 and not parts[1].isdigit():
             day = parts[0]
             month = parts[1]
+            
+            # Convert month name to number
+            month_map = {
+                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+            }
+            
+            month_num = month_map.get(month.lower()[:3])
+            if month_num is None:
+                return date_str  # Return original if month not recognized
+            
+            # Assume current year if not specified (you can modify this)
+            year = 2024  # or use current year: datetime.now().year
+            
+            # Return a date string that pandas can parse unambiguously
+            return f"{year}-{month_num:02d}-{int(day):02d}"
+        
+        # Handle 'May-31' format (month-day)
+        elif parts[1].isdigit() and len(parts[1]) <= 2 and not parts[0].isdigit():
+            month = parts[0]
+            day = parts[1]
             
             # Convert month name to number
             month_map = {
@@ -144,8 +168,18 @@ def create_datetime_column(df, mapping):
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
             
+            # Debug: Show original date values
+            if 'st' in globals():
+                st.write("Original date values (first 10):")
+                st.write(date_col.head(10).tolist())
+            
             # Convert dates using our helper function
             converted_dates = date_col.apply(convert_date_format)
+            
+            # Debug: Show converted date values
+            if 'st' in globals():
+                st.write("Converted date values (first 10):")
+                st.write(converted_dates.head(10).tolist())
             
             # Combine date and time
             datetime_str = converted_dates + ' ' + time_col
@@ -167,7 +201,7 @@ def create_datetime_column(df, mapping):
                     pass
             
             # Debug: Show some sample datetime strings and results
-            if 'st' in globals():  # Only if streamlit is available
+            if 'st' in globals():
                 valid_count = df['parsed_datetime'].notna().sum()
                 total_count = len(df)
                 st.write(f"DateTime parsing: {valid_count}/{total_count} successful")
@@ -176,6 +210,7 @@ def create_datetime_column(df, mapping):
                 sample_data = pd.DataFrame({
                     'Original_Date': date_col.head(5),
                     'Original_Time': time_col.head(5),
+                    'Converted_Date': converted_dates.head(5),
                     'Combined': datetime_str.head(5),
                     'Parsed': df['parsed_datetime'].head(5)
                 })
@@ -197,7 +232,7 @@ def create_datetime_column(df, mapping):
             st.warning(f"Could not parse datetime: {e}. Using sequential index.")
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
-        
+
 def filter_meaningful_columns_strict(df, zero_threshold=0.95):
     """
     Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
