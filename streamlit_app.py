@@ -1841,7 +1841,7 @@ if __name__ == "__main__":
         else:
             plt.close(fig)
     
-    return plots
+        return plots
 
 # Updated analysis function to use filtered data
 def analyze_hvac_data_enhanced_filtered(df, headers, mapping):
