@@ -1802,7 +1802,7 @@ if uploaded_files:
         plt.close(fig)  # Close figure to free memory
 
     # Single unified analysis results
-    st.markdown("### 📋 HVAC Issues Analysis")
+    st.markdown("## 📋 HVAC Issues Analysis")
     if all_issues:
         # Show summary counts
         high_count = len([i for i in all_issues if i['severity'] == 'high'])
