@@ -1459,98 +1459,63 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
 # Updated create_time_series_plots function
 def create_time_series_plots_filtered(df, headers, mapping):
     """Create temperature vs time and pressure vs time plots with filtered data"""
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import streamlit as st
+
     plots = []
 
     # Filter the dataframe first
     filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
     filtered_headers = filtered_df.columns.tolist()
 
-    # Temperature vs Time Plot
-    temp_indices = (filtered_mapping['suctionTemps'] + filtered_mapping['supplyAirTemps'] +
-                   filtered_mapping['dischargeTemps'] + filtered_mapping['outdoorAirTemps'] +
-                   filtered_mapping['indoorTemps'])
+    if 'parsed_datetime' not in filtered_df.columns:
+        st.warning("Datetime column not found; cannot plot time series.")
+        return []
 
-    if temp_indices and 'parsed_datetime' in filtered_df.columns:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+    datetime_col = filtered_df['parsed_datetime']
 
-        plotted_any = False
-        for idx_num, idx in enumerate(temp_indices[:6]):  # Limit to 6 columns for readability
-            if idx < len(filtered_headers):
-                temp_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-                valid_mask = ~temp_data.isna() & ~filtered_df['parsed_datetime'].isna()
+    # === Temperature Plot ===
+    temp_indices = (filtered_mapping.get('suctionTemps', []) +
+                    filtered_mapping.get('supplyAirTemps', []) +
+                    filtered_mapping.get('dischargeTemps', []) +
+                    filtered_mapping.get('outdoorAirTemps', []) +
+                    filtered_mapping.get('indoorTemps', []))
 
-                if valid_mask.sum() > 0:
-                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
-                           temp_data[valid_mask],
-                           label=get_legend_label(filtered_headers[idx]),
-                           marker='o',
-                           markersize=2,
-                           linewidth=1,
-                           color=colors[idx_num % len(colors)])
-                    plotted_any = True
+    if temp_indices:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        for idx in temp_indices:
+            label = get_legend_label(filtered_headers[idx])
+            y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+            ax.plot(datetime_col, y_data, label=label)
 
-        if plotted_any:
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Temperature (°F)')
-            ax.set_title('Temperature vs Time (Filtered Data)')
-            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            ax.grid(True, alpha=0.3)
+        ax.set_title("Temperature vs Time")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Temperature (°F)")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I %p'))  # e.g., 12 AM, 4 PM
+        ax.legend()
+        ax.grid(True)
+        st.pyplot(fig)
 
-            # Format x-axis
-            if len(filtered_df) > 0:
-                from matplotlib.dates import AutoDateLocator
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
-                plt.xticks(rotation=45)
+    # === Pressure Plot ===
+    pressure_indices = (filtered_mapping.get('suctionPressures', []) +
+                        filtered_mapping.get('dischargePressures', []))
 
-            plt.tight_layout()
-            plots.append(('Temperature vs Time (Filtered)', fig))
-        else:
-            plt.close(fig)
+    if pressure_indices:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        for idx in pressure_indices:
+            label = get_legend_label(filtered_headers[idx])
+            y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+            ax.plot(datetime_col, y_data, label=label)
 
-    # Pressure vs Time Plot
-    pressure_indices = filtered_mapping['suctionPressures'] + filtered_mapping['dischargePressures']
-
-    if pressure_indices and 'parsed_datetime' in filtered_df.columns:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'purple', 'brown']
-
-        plotted_any = False
-        for idx_num, idx in enumerate(pressure_indices[:6]):
-            if idx < len(filtered_headers):
-                pressure_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-                valid_mask = ~pressure_data.isna() & ~filtered_df['parsed_datetime'].isna()
-
-                if valid_mask.sum() > 0:
-                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
-                           pressure_data[valid_mask],
-                           label=get_legend_label(filtered_headers[idx]),
-                           marker='o',
-                           markersize=2,
-                           linewidth=1,
-                           color=colors[idx_num % len(colors)])
-                    plotted_any = True
-
-        if plotted_any:
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Pressure (PSI)')
-            ax.set_title('Pressure vs Time (Filtered Data)')
-            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            ax.grid(True, alpha=0.3)
-
-            # Format x-axis
-            if len(filtered_df) > 0:
-                from matplotlib.dates import AutoDateLocator
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
-                plt.xticks(rotation=45)
-
-            plt.tight_layout()
-            plots.append(('Pressure vs Time (Filtered)', fig))
-        else:
-            plt.close(fig)
-
+        ax.set_title("Pressure vs Time")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Pressure (PSI)")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I %p'))
+        ax.legend()
+        ax.grid(True)
+        st.pyplot(fig)
+        
     # Relative Humidity vs Time Plot
 
     indoor_rh_indices = [
@@ -1716,6 +1681,7 @@ if uploaded_files:
 
             # Create datetime column
             df = create_datetime_column(df, mapping)
+            create_time_series_plots_filtered(df, df.columns.tolist(), mapping)
 
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
