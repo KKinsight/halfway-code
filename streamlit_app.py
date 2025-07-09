@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from io import StringIO, BytesIO
-from datetime import datetime
+from datetime import dFcovert-Fdatetime
 import base64
 
 # Only import reportlab if available
@@ -105,21 +105,27 @@ def create_datetime_column(df, mapping):
 
             # Convert '31-May' to '2024-05-31'
             def convert_date(date_str):
-                if pd.isna(date_str) or date_str == 'nan':
+                try:
+                    # Handle Excel-style MM/DD/YY or MM-DD-YY
+                    parsed = pd.to_datetime(date_str, errors='coerce')
+                    if pd.notna(parsed):
+                        return parsed.strftime('%Y-%m-%d')
+                    
+                    # Handle "31-May" style
+                    if '-' in date_str and len(date_str.split('-')) == 2:
+                        parts = date_str.split('-')
+                        if parts[0].isdigit():
+                            day = parts[0]
+                            month = parts[1]
+                            month_map = {
+                                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                            }
+                            month_num = month_map.get(month.lower()[:3], month)
+                            return f"2024-{month_num}-{day.zfill(2)}"
+                except:
                     return None
-                if '-' in date_str and len(date_str.split('-')) == 2:
-                    parts = date_str.split('-')
-                    if parts[0].isdigit():
-                        day = parts[0]
-                        month = parts[1]
-                        # Convert month name to number
-                        month_map = {
-                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-                        }
-                        month_num = month_map.get(month.lower()[:3], month)
-                        return f"2024-{month_num}-{day.zfill(2)}"
                 return date_str
 
             date_col = date_col.apply(convert_date)
