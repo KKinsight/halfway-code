@@ -1267,7 +1267,6 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     story.append(Spacer(1, 20))
 
     # Executive Summary
-    st.markdown("## 📋 HVAC Issues Analysis")
     story.append(Paragraph("Executive Summary", heading_style))
     if issues:
         high_count = len([i for i in issues if i['severity'] == 'high'])
@@ -1803,6 +1802,7 @@ if uploaded_files:
         plt.close(fig)  # Close figure to free memory
 
     # Single unified analysis results
+    st.markdown("### 📋 HVAC Issues Analysis")
     if all_issues:
         # Show summary counts
         high_count = len([i for i in all_issues if i['severity'] == 'high'])
