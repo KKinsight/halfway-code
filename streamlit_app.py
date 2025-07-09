@@ -4,8 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from io import StringIO, BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 import base64
+import warnings
+warnings.filterwarnings('ignore')
 
 # Only import reportlab if available
 try:
@@ -19,6 +21,203 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
     st.warning("ReportLab not available. PDF generation will be limited to text reports.")
+
+def convert_date_format(date_str):
+    """Convert '31-May' format to proper datetime format with robust error handling"""
+    
+    if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
+        return None
+    
+    date_str = str(date_str).strip()
+    
+    # If it's already in a standard format, return as-is
+    if '/' in date_str or len(date_str) > 10:
+        return date_str
+    
+    # Handle '31-May' format (day-month)
+    if '-' in date_str and len(date_str.split('-')) == 2:
+        parts = date_str.split('-')
+        
+        # Check if first part is day (numeric) and second is month (text)
+        if parts[0].isdigit() and len(parts[0]) <= 2 and not parts[1].isdigit():
+            day = parts[0]
+            month = parts[1]
+            
+            # Convert month name to number
+            month_map = {
+                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+            }
+            
+            month_num = month_map.get(month.lower()[:3])
+            if month_num is None:
+                return date_str  # Return original if month not recognized
+            
+            # Use 2024 for consistency with your data
+            year = 2024
+            
+            # Return a date string that pandas can parse unambiguously
+            return f"{year}-{month_num:02d}-{int(day):02d}"
+        
+        # Handle 'May-31' format (month-day)
+        elif parts[1].isdigit() and len(parts[1]) <= 2 and not parts[0].isdigit():
+            month = parts[0]
+            day = parts[1]
+            
+            month_map = {
+                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+            }
+            
+            month_num = month_map.get(month.lower()[:3])
+            if month_num is None:
+                return date_str
+            
+            year = 2024
+            return f"{year}-{month_num:02d}-{int(day):02d}"
+    
+    return date_str
+
+def create_datetime_column_robust(df, mapping):
+    """Create datetime column with robust error handling for large datasets"""
+    
+    try:
+        print(f"Processing {len(df)} rows...")
+        
+        if mapping.get('datetime') is not None:
+            # Direct datetime column
+            df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
+        
+        elif mapping.get('date') is not None and mapping.get('time') is not None:
+            # Separate date and time columns
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
+            time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
+            
+            print("Converting date formats...")
+            # Convert dates using vectorized operations for better performance
+            converted_dates = date_col.apply(convert_date_format)
+            
+            # Handle missing or invalid times
+            time_col = time_col.replace(['', 'nan', 'None'], '00:00')
+            
+            # Combine date and time
+            datetime_str = converted_dates.astype(str) + ' ' + time_col.astype(str)
+            
+            # Parse datetime with multiple format attempts
+            df['parsed_datetime'] = None
+            
+            # Try different datetime formats
+            formats_to_try = [
+                '%Y-%m-%d %H:%M',
+                '%Y-%m-%d %H:%M:%S',
+                '%m/%d/%Y %H:%M',
+                '%m/%d/%Y %H:%M:%S'
+            ]
+            
+            for fmt in formats_to_try:
+                try:
+                    df['parsed_datetime'] = pd.to_datetime(datetime_str, format=fmt, errors='coerce')
+                    if not df['parsed_datetime'].isna().all():
+                        print(f"Successfully parsed with format: {fmt}")
+                        break
+                except:
+                    continue
+            
+            # If all formats failed, try without format specification
+            if df['parsed_datetime'].isna().all():
+                try:
+                    df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+                    print("Successfully parsed without explicit format")
+                except:
+                    print("All datetime parsing attempts failed")
+        
+        elif mapping.get('date') is not None:
+            # Date only
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
+            converted_dates = date_col.apply(convert_date_format)
+            df['parsed_datetime'] = pd.to_datetime(converted_dates, errors='coerce')
+        
+        else:
+            # No datetime columns found, create sequential timestamps
+            print("No datetime columns found, creating sequential timestamps")
+            df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        
+        # Report parsing success
+        valid_count = df['parsed_datetime'].notna().sum()
+        total_count = len(df)
+        success_rate = (valid_count / total_count) * 100
+        
+        print(f"DateTime parsing: {valid_count}/{total_count} successful ({success_rate:.1f}%)")
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error in datetime parsing: {e}")
+        print("Using sequential timestamps as fallback")
+        df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        return df
+
+def filter_meaningful_columns_optimized(df, zero_threshold=0.95, variance_threshold=0.01):
+    """
+    Optimized filtering for large datasets
+    """
+    meaningful_cols = []
+    
+    # Process columns in batches to avoid memory issues
+    batch_size = 50
+    total_cols = len(df.columns)
+    
+    for i in range(0, total_cols, batch_size):
+        batch_cols = df.columns[i:i+batch_size]
+        
+        for col in batch_cols:
+            try:
+                # Skip if column name suggests it's not meaningful
+                if col.lower() in ['', 'unnamed', 'index'] or col.startswith('Unnamed'):
+                    continue
+                
+                # Convert to numeric for analysis
+                numeric_data = pd.to_numeric(df[col], errors='coerce')
+                
+                # Skip if all values are NaN
+                if numeric_data.isna().all():
+                    continue
+                
+                # Remove NaN values for analysis
+                clean_data = numeric_data.dropna()
+                
+                # Skip if too few valid values
+                if len(clean_data) < 3:
+                    continue
+                
+                # Check for zero threshold
+                zero_count = (clean_data == 0).sum()
+                zero_ratio = zero_count / len(clean_data)
+                
+                if zero_ratio > zero_threshold:
+                    continue
+                
+                # Check for variance (avoid constant columns)
+                if clean_data.var() < variance_threshold:
+                    continue
+                
+                # Check for reasonable range (avoid columns with all tiny values)
+                if clean_data.abs().max() < 0.1:
+                    continue
+                
+                # Check for unique values (avoid columns with too few unique values)
+                if clean_data.nunique() < 2:
+                    continue
+                
+                meaningful_cols.append(col)
+                
+            except Exception as e:
+                # Skip problematic columns
+                continue
+    
+    return meaningful_cols
 
 # --- Enhanced Helper Functions ---
 def parse_headers_enhanced(headers):
@@ -94,247 +293,54 @@ def parse_headers_enhanced(headers):
     
     return mapping
 
-
-def convert_date_format(date_str):
-    """Convert '31-May' format to proper datetime format"""
-    
-    if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
-        return None
-    
-    date_str = str(date_str).strip()
-    
-    # If it's already in a standard format, return as-is
-    if '/' in date_str or len(date_str) > 10:
-        return date_str
-    
-    # Handle '31-May' or '1-Jun' format (day-month)
-    if '-' in date_str and len(date_str.split('-')) == 2:
-        parts = date_str.split('-')
-        
-        # Check if first part is day (numeric) and second is month (text)
-        if parts[0].isdigit() and len(parts[0]) <= 2 and not parts[1].isdigit():
-            day = parts[0]
-            month = parts[1]
-            
-            # Convert month name to number
-            month_map = {
-                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
-                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
-                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
-            }
-            
-            month_num = month_map.get(month.lower()[:3])
-            if month_num is None:
-                return date_str  # Return original if month not recognized
-            
-            # Use 2024 as the year (adjust based on your data)
-            year = 2024
-            
-            # Return a date string that pandas can parse unambiguously
-            return f"{year}-{month_num:02d}-{int(day):02d}"
-        
-        # Handle 'May-31' format (month-day)
-        elif parts[1].isdigit() and len(parts[1]) <= 2 and not parts[0].isdigit():
-            month = parts[0]
-            day = parts[1]
-            
-            # Convert month name to number
-            month_map = {
-                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
-                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
-                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
-            }
-            
-            month_num = month_map.get(month.lower()[:3])
-            if month_num is None:
-                return date_str  # Return original if month not recognized
-            
-            # Use 2024 as the year (adjust based on your data)
-            year = 2024
-            
-            # Return a date string that pandas can parse unambiguously
-            return f"{year}-{month_num:02d}-{int(day):02d}"
-    
-    # Return original if no conversion needed
-    return date_str
-
-def create_datetime_column(df, mapping):
-    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
-    
+def process_large_csv(file_path, chunk_size=1000):
+    """
+    Process large CSV files in chunks to avoid memory issues
+    """
     try:
-        if mapping.get('datetime') is not None:
-            df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
+        # Read the file in chunks
+        chunks = []
         
-        elif mapping.get('date') is not None and mapping.get('time') is not None:
-            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
-            
-            # Debug: Show original date values
-            print("Original date values (first 10):")
-            print(date_col.head(10).tolist())
-            
-            # Convert dates using our helper function
-            converted_dates = date_col.apply(convert_date_format)
-            
-            # Debug: Show converted date values  
-            print("Converted date values (first 10):")
-            print(converted_dates.head(10).tolist())
-            
-            # Combine date and time
-            datetime_str = converted_dates.astype(str) + ' ' + time_col.astype(str)
-            
-            # Debug: Show combined datetime strings
-            print("Combined datetime strings (first 10):")
-            print(datetime_str.head(10).tolist())
-            
-            # Parse datetime with multiple fallback methods
-            df['parsed_datetime'] = None
-            
-            # Method 1: Try with explicit format
-            try:
-                df['parsed_datetime'] = pd.to_datetime(datetime_str, format='%Y-%m-%d %H:%M', errors='coerce')
-                print(f"Method 1 successful: {df['parsed_datetime'].notna().sum()} valid dates")
-            except Exception as e:
-                print(f"Method 1 failed: {e}")
-            
-            # Method 2: If that didn't work, try without format specification
-            if df['parsed_datetime'].isna().all():
-                try:
-                    df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
-                    print(f"Method 2 successful: {df['parsed_datetime'].notna().sum()} valid dates")
-                except Exception as e:
-                    print(f"Method 2 failed: {e}")
-            
-            # Method 3: Try parsing each component separately
-            if df['parsed_datetime'].isna().all():
-                try:
-                    for i in range(len(df)):
-                        if pd.notna(converted_dates.iloc[i]) and pd.notna(time_col.iloc[i]):
-                            try:
-                                date_part = pd.to_datetime(converted_dates.iloc[i]).date()
-                                time_str = time_col.iloc[i]
-                                
-                                # Handle time format (assuming H:MM or HH:MM)
-                                if ':' in time_str:
-                                    time_parts = time_str.split(':')
-                                    hour = int(time_parts[0])
-                                    minute = int(time_parts[1])
-                                    
-                                    full_datetime = pd.Timestamp.combine(date_part, pd.Timestamp(hour=hour, minute=minute).time())
-                                    df.loc[i, 'parsed_datetime'] = full_datetime
-                            except:
-                                continue
-                    print(f"Method 3 successful: {df['parsed_datetime'].notna().sum()} valid dates")
-                except Exception as e:
-                    print(f"Method 3 failed: {e}")
-            
-            # Final validation
-            valid_count = df['parsed_datetime'].notna().sum()
-            total_count = len(df)
-            print(f"Final result: {valid_count}/{total_count} successful datetime conversions")
-            
-            # Show first few successful conversions
-            if valid_count > 0:
-                print("First 5 successful conversions:")
-                sample_data = pd.DataFrame({
-                    'Original_Date': date_col.head(5),
-                    'Original_Time': time_col.head(5),
-                    'Converted_Date': converted_dates.head(5),
-                    'Combined': datetime_str.head(5),
-                    'Parsed': df['parsed_datetime'].head(5)
-                })
-                print(sample_data.to_string())
+        # First, read just the header
+        df_header = pd.read_csv(file_path, nrows=2)
+        headers = df_header.columns.tolist()
         
-        elif mapping.get('date') is not None:
-            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            date_col = date_col.apply(convert_date_format)
-            df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
+        # Parse headers
+        mapping = parse_headers_enhanced(headers)
         
-        else:
-            # Fallback to sequential timestamps
-            df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-            print("Used fallback sequential timestamps")
+        print(f"Reading CSV file: {file_path}")
+        print(f"Headers found: {len(headers)}")
         
-        return df
+        # Read the full file (if it's not too large) or in chunks
+        try:
+            df = pd.read_csv(file_path)
+            print(f"Successfully loaded {len(df)} rows")
+        except MemoryError:
+            print("File too large, processing in chunks...")
+            # Process in chunks if memory is an issue
+            chunk_list = []
+            for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+                chunk_list.append(chunk)
+            df = pd.concat(chunk_list, ignore_index=True)
+            print(f"Successfully loaded {len(df)} rows in chunks")
+        
+        # Create datetime column
+        df = create_datetime_column_robust(df, mapping)
+        
+        # Filter meaningful columns
+        print("Filtering meaningful columns...")
+        meaningful_cols = filter_meaningful_columns_optimized(df)
+        print(f"Found {len(meaningful_cols)} meaningful columns")
+        
+        # Create filtered dataframe
+        filtered_cols = meaningful_cols + ['parsed_datetime']
+        filtered_df = df[filtered_cols].copy()
+        
+        return filtered_df, headers, mapping
         
     except Exception as e:
-        print(f"Error in create_datetime_column: {e}")
-        # Fallback to sequential timestamps
-        df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-        return df
-
-# Test with your sample data
-if __name__ == "__main__":
-    # Sample data from your CSV
-    test_data = {
-        'Date': ['31-May', '1-Jun', '2-Jun', '3-Jun', '4-Jun'],
-        'Time': ['1:33', '3:34', '13:05', '14:05', '8:35'],
-        'Space': [0, 0, 0, 0, 0],
-        'InRH': [0, 0, 0, 0, 0],
-        'SAT': [62.2, 62.4, 61.2, 50.1, 52.8]
-    }
-    
-    df = pd.DataFrame(test_data)
-    
-    # Mock mapping (adjust indices based on your actual data structure)
-    mapping = {
-        'date': 0,      # Date column index
-        'time': 1,      # Time column index
-        'datetime': None
-    }
-    
-    print("Testing date conversion:")
-    df = create_datetime_column(df, mapping)
-    
-    print("\nFinal DataFrame:")
-    print(df[['Date', 'Time', 'parsed_datetime']].to_string())
-
-def filter_meaningful_columns_strict(df, zero_threshold=0.95):
-    """
-    Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
-    zero_threshold: if more than this percentage of values are zero, exclude the column
-    """
-    meaningful_columns = []
-    
-    for col in df.columns:
-        if col in df.columns:
-            # Convert column to numeric, coercing errors to NaN
-            numeric_col = pd.to_numeric(df[col], errors='coerce')
-            
-            # Check if column has any meaningful data
-            if not numeric_col.isna().all():  # Not all NaN
-                # Remove NaN values for analysis
-                clean_data = numeric_col.dropna()
-                
-                if len(clean_data) > 0:
-                    # Check if ALL values are zero
-                    if (clean_data == 0).all():
-                        continue  # Skip columns with all zeros
-                    
-                    # NEW: Check if mostly zeros (optional stricter filtering)
-                    zero_percentage = (clean_data == 0).sum() / len(clean_data)
-                    if zero_percentage > zero_threshold:
-                        continue  # Skip columns that are mostly zeros
-                    
-                    # Check if there's actual variation
-                    if clean_data.nunique() > 1:
-                        meaningful_columns.append(col)
-                    elif clean_data.iloc[0] != 0:
-                        meaningful_columns.append(col)
-                else:
-                    
-                    # Check for text columns that might contain meaningful non-numeric data
-                    text_col = df[col].astype(str).str.lower().str.strip()
-                    unique_values = text_col.unique()
-                        
-                    # Filter out common empty/meaningless values
-                    meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
-                    meaningful_values = [val for val in unique_values if val not in meaningless_values]
-                        
-                    if len(meaningful_values) > 0:
-                        meaningful_columns.append(col)
-    
-    return meaningful_columns
+        print(f"Error processing CSV: {e}")
+        return None, None, None
 
 def generate_enhanced_data_summary(df_summary):
     """Generate data summary with filtered meaningful columns"""
@@ -1615,99 +1621,161 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
     return filtered_df, updated_mapping
     
 # Updated create_time_series_plots function
-def create_time_series_plots_filtered(df, headers, mapping):
-    """Create temperature vs time and pressure vs time plots with filtered data"""
+def create_optimized_plots(df, headers, mapping, max_series=6):
+    """
+    Create plots optimized for large datasets
+    """
     plots = []
     
-    # Filter the dataframe first
-    filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
-    filtered_headers = filtered_df.columns.tolist()
+    if df is None or len(df) == 0:
+        return plots
     
-    # Temperature vs Time Plot
-    temp_indices = (filtered_mapping['suctionTemps'] + filtered_mapping['supplyAirTemps'] +
-                   filtered_mapping['dischargeTemps'] + filtered_mapping['outdoorAirTemps'] +
-                   filtered_mapping['indoorTemps'])
+    # Sample data if too large for plotting
+    if len(df) > 5000:
+        print(f"Dataset has {len(df)} rows, sampling for plotting...")
+        df_plot = df.sample(n=5000, random_state=42).sort_values('parsed_datetime')
+    else:
+        df_plot = df
     
-    if temp_indices and 'parsed_datetime' in filtered_df.columns:
+    # Temperature plot
+    temp_cols = [col for col in df.columns if 
+                 any(temp_word in col.lower() for temp_word in ['temp', 'sat', 'rat', 'oat', 'coiltmp'])]
+    
+    if temp_cols and 'parsed_datetime' in df_plot.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+        colors = plt.cm.tab10(np.linspace(0, 1, min(len(temp_cols), max_series)))
         
-        plotted_any = False
-        for idx_num, idx in enumerate(temp_indices[:6]):  # Limit to 6 columns for readability
-            if idx < len(filtered_headers):
-                temp_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-                valid_mask = ~temp_data.isna() & ~filtered_df['parsed_datetime'].isna()
+        plotted_count = 0
+        for col in temp_cols[:max_series]:
+            try:
+                temp_data = pd.to_numeric(df_plot[col], errors='coerce')
+                valid_mask = ~temp_data.isna() & ~df_plot['parsed_datetime'].isna()
                 
                 if valid_mask.sum() > 0:
-                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
+                    ax.plot(df_plot.loc[valid_mask, 'parsed_datetime'],
                            temp_data[valid_mask],
-                           label=get_legend_label(filtered_headers[idx]),
-                           marker='o',
-                           markersize=2,
+                           label=col[:20],  # Truncate long labels
+                           color=colors[plotted_count],
                            linewidth=1,
-                           color=colors[idx_num % len(colors)])
-                    plotted_any = True
+                           alpha=0.8)
+                    plotted_count += 1
+            except Exception as e:
+                continue
         
-        if plotted_any:
+        if plotted_count > 0:
             ax.set_xlabel('Time')
             ax.set_ylabel('Temperature (°F)')
-            ax.set_title('Temperature vs Time (Filtered Data)')
+            ax.set_title('Temperature Trends Over Time')
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             ax.grid(True, alpha=0.3)
             
-            # Format x-axis
-            if len(filtered_df) > 0:
-                from matplotlib.dates import AutoDateLocator
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
-                plt.xticks(rotation=45)
-            
+            # Format x-axis for better readability
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+            plt.xticks(rotation=45)
             plt.tight_layout()
-            plots.append(('Temperature vs Time (Filtered)', fig))
+            
+            plots.append(('Temperature Trends', fig))
         else:
             plt.close(fig)
     
-    # Pressure vs Time Plot
-    pressure_indices = filtered_mapping['suctionPressures'] + filtered_mapping['dischargePressures']
+    # Pressure plot
+    pressure_cols = [col for col in df.columns if 
+                    any(press_word in col.lower() for press_word in ['pr', 'pressure', 'headpr', 'sucpr'])]
     
-    if pressure_indices and 'parsed_datetime' in filtered_df.columns:
+    if pressure_cols and 'parsed_datetime' in df_plot.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'purple', 'brown']
+        colors = plt.cm.tab10(np.linspace(0, 1, min(len(pressure_cols), max_series)))
         
-        plotted_any = False
-        for idx_num, idx in enumerate(pressure_indices[:6]):
-            if idx < len(filtered_headers):
-                pressure_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-                valid_mask = ~pressure_data.isna() & ~filtered_df['parsed_datetime'].isna()
+        plotted_count = 0
+        for col in pressure_cols[:max_series]:
+            try:
+                pressure_data = pd.to_numeric(df_plot[col], errors='coerce')
+                valid_mask = ~pressure_data.isna() & ~df_plot['parsed_datetime'].isna()
                 
                 if valid_mask.sum() > 0:
-                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
+                    ax.plot(df_plot.loc[valid_mask, 'parsed_datetime'],
                            pressure_data[valid_mask],
-                           label=get_legend_label(filtered_headers[idx]),
-                           marker='o',
-                           markersize=2,
+                           label=col[:20],
+                           color=colors[plotted_count],
                            linewidth=1,
-                           color=colors[idx_num % len(colors)])
-                    plotted_any = True
+                           alpha=0.8)
+                    plotted_count += 1
+            except Exception as e:
+                continue
         
-        if plotted_any:
+        if plotted_count > 0:
             ax.set_xlabel('Time')
             ax.set_ylabel('Pressure (PSI)')
-            ax.set_title('Pressure vs Time (Filtered Data)')
+            ax.set_title('Pressure Trends Over Time')
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             ax.grid(True, alpha=0.3)
             
-            # Format x-axis
-            if len(filtered_df) > 0:
-                from matplotlib.dates import AutoDateLocator
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
-                plt.xticks(rotation=45)
-            
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+            plt.xticks(rotation=45)
             plt.tight_layout()
-            plots.append(('Pressure vs Time (Filtered)', fig))
+            
+            plots.append(('Pressure Trends', fig))
         else:
             plt.close(fig)
+    
+    return plots
+
+def generate_summary_stats(df):
+    """Generate summary statistics for the dataset"""
+    if df is None or len(df) == 0:
+        return [['No data available']]
+    
+    # Filter numeric columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    numeric_cols = [col for col in numeric_cols if col != 'parsed_datetime']
+    
+    if not numeric_cols:
+        return [['No numeric data available']]
+    
+    stats_data = [['Parameter', 'Count', 'Mean', 'Min', 'Max', 'Std Dev']]
+    
+    for col in numeric_cols[:20]:  # Limit to first 20 columns
+        try:
+            series = df[col].dropna()
+            if len(series) > 0:
+                stats_data.append([
+                    col[:30],  # Truncate long names
+                    str(len(series)),
+                    f"{series.mean():.2f}",
+                    f"{series.min():.2f}",
+                    f"{series.max():.2f}",
+                    f"{series.std():.2f}"
+                ])
+        except Exception:
+            continue
+    
+    return stats_data
+
+# Example usage
+if __name__ == "__main__":
+    # Test with your CSV file
+    file_path = "your_large_file.csv"  # Replace with your file path
+    
+    # Process the CSV
+    df, headers, mapping = process_large_csv(file_path)
+    
+    if df is not None:
+        print(f"Successfully processed {len(df)} rows")
+        print(f"Columns available: {df.columns.tolist()}")
+        
+        # Generate plots
+        plots = create_optimized_plots(df, headers, mapping)
+        print(f"Generated {len(plots)} plots")
+        
+        # Generate summary statistics
+        stats = generate_summary_stats(df)
+        print("Summary statistics generated")
+        
+        # Show plots
+        for title, fig in plots:
+            plt.show()
+    else:
+        print("Failed to process CSV file")
     
     # Relative Humidity vs Time Plot
 
