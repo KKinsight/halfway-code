@@ -94,55 +94,204 @@ def parse_headers_enhanced(headers):
 
     return mapping
 
-def create_datetime_column(df, mapping):
-    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
+def create_datetime_column_improved(df, mapping):
+    """
+    Improved datetime column creation with better handling of date formats like '1-Jun'
+    and time formats like '15:34'
+    """
     try:
         if mapping['datetime'] is not None:
+            # Handle single datetime column
             df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
+            
         elif mapping['date'] is not None and mapping['time'] is not None:
+            # Handle separate date and time columns
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
-
-            # Convert '31-May' to '2024-05-31'
-            def convert_date(date_str):
+            
+            # Improved date conversion function
+            def convert_date_improved(date_str):
                 try:
-                    # Handle Excel-style MM/DD/YY or MM-DD-YY
-                    parsed = pd.to_datetime(date_str, errors='coerce')
-                    if pd.notna(parsed):
-                        return parsed.strftime('%Y-%m-%d')
+                    # Handle various date formats
+                    date_str = str(date_str).strip()
                     
-                    # Handle "31-May" style
-                    if '-' in date_str and len(date_str.split('-')) == 2:
+                    # Skip empty or NaN values
+                    if date_str in ['', 'nan', 'None', 'NaN']:
+                        return None
+                    
+                    # Try direct pandas conversion first
+                    try:
+                        parsed = pd.to_datetime(date_str, errors='coerce')
+                        if pd.notna(parsed):
+                            return parsed.strftime('%Y-%m-%d')
+                    except:
+                        pass
+                    
+                    # Handle "1-Jun", "31-May" style dates
+                    if '-' in date_str:
                         parts = date_str.split('-')
-                        if parts[0].isdigit():
-                            day = parts[0]
-                            month = parts[1]
-                            month_map = {
-                                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-                            }
-                            month_num = month_map.get(month.lower()[:3], month)
-                            return f"2024-{month_num}-{day.zfill(2)}"
-                except:
+                        if len(parts) == 2:
+                            day_part = parts[0].strip()
+                            month_part = parts[1].strip()
+                            
+                            # Check if first part is day (numeric)
+                            if day_part.isdigit():
+                                day = int(day_part)
+                                month = month_part.lower()
+                                
+                                # Month mapping
+                                month_map = {
+                                    'jan': '01', 'january': '01',
+                                    'feb': '02', 'february': '02',
+                                    'mar': '03', 'march': '03',
+                                    'apr': '04', 'april': '04',
+                                    'may': '05',
+                                    'jun': '06', 'june': '06',
+                                    'jul': '07', 'july': '07',
+                                    'aug': '08', 'august': '08',
+                                    'sep': '09', 'september': '09',
+                                    'oct': '10', 'october': '10',
+                                    'nov': '11', 'november': '11',
+                                    'dec': '12', 'december': '12'
+                                }
+                                
+                                # Try to find month
+                                month_num = None
+                                for key, value in month_map.items():
+                                    if month.startswith(key):
+                                        month_num = value
+                                        break
+                                
+                                if month_num and 1 <= day <= 31:
+                                    # Use current year or 2024 as default
+                                    year = datetime.now().year
+                                    return f"{year}-{month_num}-{day:02d}"
+                    
+                    # Handle "Jun-1" style (month-day)
+                    elif '-' in date_str:
+                        parts = date_str.split('-')
+                        if len(parts) == 2:
+                            month_part = parts[0].strip()
+                            day_part = parts[1].strip()
+                            
+                            if day_part.isdigit():
+                                day = int(day_part)
+                                month = month_part.lower()
+                                
+                                month_map = {
+                                    'jan': '01', 'january': '01',
+                                    'feb': '02', 'february': '02',
+                                    'mar': '03', 'march': '03',
+                                    'apr': '04', 'april': '04',
+                                    'may': '05',
+                                    'jun': '06', 'june': '06',
+                                    'jul': '07', 'july': '07',
+                                    'aug': '08', 'august': '08',
+                                    'sep': '09', 'september': '09',
+                                    'oct': '10', 'october': '10',
+                                    'nov': '11', 'november': '11',
+                                    'dec': '12', 'december': '12'
+                                }
+                                
+                                month_num = None
+                                for key, value in month_map.items():
+                                    if month.startswith(key):
+                                        month_num = value
+                                        break
+                                
+                                if month_num and 1 <= day <= 31:
+                                    year = datetime.now().year
+                                    return f"{year}-{month_num}-{day:02d}"
+                    
+                    # If all else fails, try pandas one more time with different formats
+                    for fmt in ['%d-%b', '%b-%d', '%d-%B', '%B-%d']:
+                        try:
+                            parsed = pd.to_datetime(date_str, format=fmt, errors='coerce')
+                            if pd.notna(parsed):
+                                # Add current year
+                                return parsed.replace(year=datetime.now().year).strftime('%Y-%m-%d')
+                        except:
+                            continue
+                    
                     return None
-                return date_str
-
-            date_col = date_col.apply(convert_date)
-            datetime_str = date_col + ' ' + time_col
-            df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+                    
+                except Exception as e:
+                    print(f"Error converting date '{date_str}': {e}")
+                    return None
+            
+            # Convert dates
+            converted_dates = date_col.apply(convert_date_improved)
+            
+            # Create datetime strings
+            datetime_strings = []
+            for i in range(len(converted_dates)):
+                date_part = converted_dates.iloc[i]
+                time_part = time_col.iloc[i]
+                
+                if date_part and time_part and time_part not in ['', 'nan', 'None', 'NaN']:
+                    datetime_strings.append(f"{date_part} {time_part}")
+                else:
+                    datetime_strings.append(None)
+            
+            # Convert to datetime
+            df['parsed_datetime'] = pd.to_datetime(datetime_strings, errors='coerce')
+            
         elif mapping['date'] is not None:
+            # Handle date-only column
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            date_col = date_col.apply(lambda x: convert_date(x) if callable(convert_date) else x)
-            df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
+            converted_dates = date_col.apply(convert_date_improved)
+            df['parsed_datetime'] = pd.to_datetime(converted_dates, errors='coerce')
+            
         else:
+            # No date/time columns found - create sequential datetime
             df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        
+        # Check how many valid datetime values we have
+        valid_datetime_count = df['parsed_datetime'].notna().sum()
+        total_rows = len(df)
+        
+        print(f"DateTime parsing results: {valid_datetime_count}/{total_rows} valid datetime values")
+        
+        if valid_datetime_count == 0:
+            print("No valid datetime values found, creating sequential timestamps")
+            df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        elif valid_datetime_count < total_rows * 0.5:  # Less than 50% valid
+            print(f"Only {valid_datetime_count} out of {total_rows} datetime values are valid")
+            # You might want to handle this case differently
+        
         return df
+        
     except Exception as e:
-        st.warning(f"Could not parse datetime: {e}. Using sequential index.")
+        print(f"Error in create_datetime_column_improved: {e}")
+        st.warning(f"Could not parse datetime: {e}. Using sequential timestamps.")
         df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
         return df
 
+
+def debug_datetime_parsing(df, mapping):
+    """
+    Debug function to help identify datetime parsing issues
+    """
+    print("=== DateTime Parsing Debug ===")
+    
+    if mapping['date'] is not None:
+        date_col = df.iloc[:, mapping['date']]
+        print(f"Date column index: {mapping['date']}")
+        print(f"Date column name: {df.columns[mapping['date']]}")
+        print(f"First 10 date values: {date_col.head(10).tolist()}")
+        print(f"Date column dtype: {date_col.dtype}")
+        print(f"Unique date values (first 10): {date_col.unique()[:10]}")
+    
+    if mapping['time'] is not None:
+        time_col = df.iloc[:, mapping['time']]
+        print(f"Time column index: {mapping['time']}")
+        print(f"Time column name: {df.columns[mapping['time']]}")
+        print(f"First 10 time values: {time_col.head(10).tolist()}")
+        print(f"Time column dtype: {time_col.dtype}")
+        print(f"Unique time values (first 10): {time_col.unique()[:10]}")
+    
+    print("=== End Debug ===")
+    
 def filter_meaningful_columns_strict(df, zero_threshold=0.95):
     """
     Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
@@ -1463,64 +1612,136 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
     return filtered_df, updated_mapping
 
 # Updated create_time_series_plots function
-def create_time_series_plots_filtered(df, headers, mapping):
-    """Create temperature vs time and pressure vs time plots with filtered data"""
+def create_time_series_plots_debug(df, headers, mapping):
+    """
+    Enhanced plotting function with better error handling and debugging
+    """
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
-    import streamlit as st
-
-    plots = []
-
+    
+    # Debug the datetime parsing
+    debug_datetime_parsing(df, mapping)
+    
+    # Check if parsed_datetime exists and has valid values
+    if 'parsed_datetime' not in df.columns:
+        st.error("No parsed_datetime column found. Cannot create time series plots.")
+        return []
+    
+    datetime_col = df['parsed_datetime']
+    valid_datetime_mask = datetime_col.notna()
+    valid_count = valid_datetime_mask.sum()
+    
+    if valid_count == 0:
+        st.error("No valid datetime values found. Cannot create time series plots.")
+        return []
+    
+    if valid_count < len(df) * 0.5:
+        st.warning(f"Only {valid_count} out of {len(df)} rows have valid datetime values. Plots may be incomplete.")
+    
     # Filter the dataframe first
     filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
     filtered_headers = filtered_df.columns.tolist()
-
-    if 'parsed_datetime' not in filtered_df.columns:
-        st.warning("Datetime column not found; cannot plot time series.")
-        return []
-
-    datetime_col = filtered_df['parsed_datetime']
-
-    # === Temperature Plot ===
+    
+    plots = []
+    
+    # Temperature Plot
     temp_indices = (filtered_mapping.get('suctionTemps', []) +
-                    filtered_mapping.get('supplyAirTemps', []) +
-                    filtered_mapping.get('dischargeTemps', []) +
-                    filtered_mapping.get('outdoorAirTemps', []) +
-                    filtered_mapping.get('indoorTemps', []))
-
+                   filtered_mapping.get('supplyAirTemps', []) +
+                   filtered_mapping.get('dischargeTemps', []) +
+                   filtered_mapping.get('outdoorAirTemps', []) +
+                   filtered_mapping.get('indoorTemps', []))
+    
     if temp_indices:
-        fig, ax = plt.subplots(figsize=(12, 5))
-        for idx in temp_indices:
-            label = get_legend_label(filtered_headers[idx])
-            y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-            ax.plot(datetime_col, y_data, label=label)
-
-        ax.set_title("Temperature vs Time")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Temperature (°F)")
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I %p'))  # e.g., 12 AM, 4 PM
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
-
-    # === Pressure Plot ===
+        try:
+            fig, ax = plt.subplots(figsize=(12, 6))
+            plotted_any = False
+            
+            for idx in temp_indices:
+                if idx < len(filtered_headers):
+                    y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+                    
+                    # Create mask for valid data points
+                    valid_mask = (~y_data.isna()) & (~filtered_df['parsed_datetime'].isna())
+                    
+                    if valid_mask.sum() > 0:
+                        label = get_legend_label(filtered_headers[idx])
+                        ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'], 
+                               y_data[valid_mask], 
+                               label=label, 
+                               marker='o', 
+                               markersize=1, 
+                               linewidth=1)
+                        plotted_any = True
+            
+            if plotted_any:
+                ax.set_title("Temperature vs Time")
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Temperature (°F)")
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                # Format x-axis for better readability
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                
+                plots.append(('Temperature vs Time', fig))
+                st.pyplot(fig)
+            else:
+                plt.close(fig)
+                st.warning("No valid temperature data found for plotting.")
+                
+        except Exception as e:
+            st.error(f"Error creating temperature plot: {e}")
+            plt.close(fig)
+    
+    # Pressure Plot
     pressure_indices = (filtered_mapping.get('suctionPressures', []) +
-                        filtered_mapping.get('dischargePressures', []))
-
+                       filtered_mapping.get('dischargePressures', []))
+    
     if pressure_indices:
-        fig, ax = plt.subplots(figsize=(12, 5))
-        for idx in pressure_indices:
-            label = get_legend_label(filtered_headers[idx])
-            y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
-            ax.plot(datetime_col, y_data, label=label)
-
-        ax.set_title("Pressure vs Time")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Pressure (PSI)")
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%I %p'))
-        ax.legend()
-        ax.grid(True)
-        st.pyplot(fig)
+        try:
+            fig, ax = plt.subplots(figsize=(12, 6))
+            plotted_any = False
+            
+            for idx in pressure_indices:
+                if idx < len(filtered_headers):
+                    y_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+                    
+                    # Create mask for valid data points
+                    valid_mask = (~y_data.isna()) & (~filtered_df['parsed_datetime'].isna())
+                    
+                    if valid_mask.sum() > 0:
+                        label = get_legend_label(filtered_headers[idx])
+                        ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'], 
+                               y_data[valid_mask], 
+                               label=label, 
+                               marker='o', 
+                               markersize=1, 
+                               linewidth=1)
+                        plotted_any = True
+            
+            if plotted_any:
+                ax.set_title("Pressure vs Time")
+                ax.set_xlabel("Time")
+                ax.set_ylabel("Pressure (PSI)")
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                # Format x-axis for better readability
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                
+                plots.append(('Pressure vs Time', fig))
+                st.pyplot(fig)
+            else:
+                plt.close(fig)
+                st.warning("No valid pressure data found for plotting.")
+                
+        except Exception as e:
+            st.error(f"Error creating pressure plot: {e}")
+            plt.close(fig)
         
     # Relative Humidity vs Time Plot
 
@@ -1686,8 +1907,8 @@ if uploaded_files:
             mapping = parse_headers_enhanced(headers)
 
             # Create datetime column
-            df = create_datetime_column(df, mapping)
-            create_time_series_plots_filtered(df, df.columns.tolist(), mapping)
+            df = create_datetime_column_improved(df, mapping)
+            create_time_series_plots_debug(df, df.columns.tolist(), mapping)
 
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
