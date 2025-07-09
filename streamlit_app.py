@@ -1267,6 +1267,7 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     story.append(Spacer(1, 20))
 
     # Executive Summary
+    st.markdown("## 📋 HVAC Issues Analysis")
     story.append(Paragraph("Executive Summary", heading_style))
     if issues:
         high_count = len([i for i in issues if i['severity'] == 'high'])
