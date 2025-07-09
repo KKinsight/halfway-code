@@ -4,10 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from io import StringIO, BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime
 import base64
-import warnings
-warnings.filterwarnings('ignore')
 
 # Only import reportlab if available
 try:
@@ -21,203 +19,6 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
     st.warning("ReportLab not available. PDF generation will be limited to text reports.")
-
-def convert_date_format(date_str):
-    """Convert '31-May' format to proper datetime format with robust error handling"""
-    
-    if pd.isna(date_str) or date_str == 'nan' or str(date_str).strip() == '':
-        return None
-    
-    date_str = str(date_str).strip()
-    
-    # If it's already in a standard format, return as-is
-    if '/' in date_str or len(date_str) > 10:
-        return date_str
-    
-    # Handle '31-May' format (day-month)
-    if '-' in date_str and len(date_str.split('-')) == 2:
-        parts = date_str.split('-')
-        
-        # Check if first part is day (numeric) and second is month (text)
-        if parts[0].isdigit() and len(parts[0]) <= 2 and not parts[1].isdigit():
-            day = parts[0]
-            month = parts[1]
-            
-            # Convert month name to number
-            month_map = {
-                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
-                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
-                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
-            }
-            
-            month_num = month_map.get(month.lower()[:3])
-            if month_num is None:
-                return date_str  # Return original if month not recognized
-            
-            # Use 2024 for consistency with your data
-            year = 2024
-            
-            # Return a date string that pandas can parse unambiguously
-            return f"{year}-{month_num:02d}-{int(day):02d}"
-        
-        # Handle 'May-31' format (month-day)
-        elif parts[1].isdigit() and len(parts[1]) <= 2 and not parts[0].isdigit():
-            month = parts[0]
-            day = parts[1]
-            
-            month_map = {
-                'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
-                'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
-                'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
-            }
-            
-            month_num = month_map.get(month.lower()[:3])
-            if month_num is None:
-                return date_str
-            
-            year = 2024
-            return f"{year}-{month_num:02d}-{int(day):02d}"
-    
-    return date_str
-
-def create_datetime_column_robust(df, mapping):
-    """Create datetime column with robust error handling for large datasets"""
-    
-    try:
-        print(f"Processing {len(df)} rows...")
-        
-        if mapping.get('datetime') is not None:
-            # Direct datetime column
-            df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
-        
-        elif mapping.get('date') is not None and mapping.get('time') is not None:
-            # Separate date and time columns
-            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
-            
-            print("Converting date formats...")
-            # Convert dates using vectorized operations for better performance
-            converted_dates = date_col.apply(convert_date_format)
-            
-            # Handle missing or invalid times
-            time_col = time_col.replace(['', 'nan', 'None'], '00:00')
-            
-            # Combine date and time
-            datetime_str = converted_dates.astype(str) + ' ' + time_col.astype(str)
-            
-            # Parse datetime with multiple format attempts
-            df['parsed_datetime'] = None
-            
-            # Try different datetime formats
-            formats_to_try = [
-                '%Y-%m-%d %H:%M',
-                '%Y-%m-%d %H:%M:%S',
-                '%m/%d/%Y %H:%M',
-                '%m/%d/%Y %H:%M:%S'
-            ]
-            
-            for fmt in formats_to_try:
-                try:
-                    df['parsed_datetime'] = pd.to_datetime(datetime_str, format=fmt, errors='coerce')
-                    if not df['parsed_datetime'].isna().all():
-                        print(f"Successfully parsed with format: {fmt}")
-                        break
-                except:
-                    continue
-            
-            # If all formats failed, try without format specification
-            if df['parsed_datetime'].isna().all():
-                try:
-                    df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
-                    print("Successfully parsed without explicit format")
-                except:
-                    print("All datetime parsing attempts failed")
-        
-        elif mapping.get('date') is not None:
-            # Date only
-            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
-            converted_dates = date_col.apply(convert_date_format)
-            df['parsed_datetime'] = pd.to_datetime(converted_dates, errors='coerce')
-        
-        else:
-            # No datetime columns found, create sequential timestamps
-            print("No datetime columns found, creating sequential timestamps")
-            df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-        
-        # Report parsing success
-        valid_count = df['parsed_datetime'].notna().sum()
-        total_count = len(df)
-        success_rate = (valid_count / total_count) * 100
-        
-        print(f"DateTime parsing: {valid_count}/{total_count} successful ({success_rate:.1f}%)")
-        
-        return df
-        
-    except Exception as e:
-        print(f"Error in datetime parsing: {e}")
-        print("Using sequential timestamps as fallback")
-        df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
-        return df
-
-def filter_meaningful_columns_optimized(df, zero_threshold=0.95, variance_threshold=0.01):
-    """
-    Optimized filtering for large datasets
-    """
-    meaningful_cols = []
-    
-    # Process columns in batches to avoid memory issues
-    batch_size = 50
-    total_cols = len(df.columns)
-    
-    for i in range(0, total_cols, batch_size):
-        batch_cols = df.columns[i:i+batch_size]
-        
-        for col in batch_cols:
-            try:
-                # Skip if column name suggests it's not meaningful
-                if col.lower() in ['', 'unnamed', 'index'] or col.startswith('Unnamed'):
-                    continue
-                
-                # Convert to numeric for analysis
-                numeric_data = pd.to_numeric(df[col], errors='coerce')
-                
-                # Skip if all values are NaN
-                if numeric_data.isna().all():
-                    continue
-                
-                # Remove NaN values for analysis
-                clean_data = numeric_data.dropna()
-                
-                # Skip if too few valid values
-                if len(clean_data) < 3:
-                    continue
-                
-                # Check for zero threshold
-                zero_count = (clean_data == 0).sum()
-                zero_ratio = zero_count / len(clean_data)
-                
-                if zero_ratio > zero_threshold:
-                    continue
-                
-                # Check for variance (avoid constant columns)
-                if clean_data.var() < variance_threshold:
-                    continue
-                
-                # Check for reasonable range (avoid columns with all tiny values)
-                if clean_data.abs().max() < 0.1:
-                    continue
-                
-                # Check for unique values (avoid columns with too few unique values)
-                if clean_data.nunique() < 2:
-                    continue
-                
-                meaningful_cols.append(col)
-                
-            except Exception as e:
-                # Skip problematic columns
-                continue
-    
-    return meaningful_cols
 
 # --- Enhanced Helper Functions ---
 def parse_headers_enhanced(headers):
@@ -238,11 +39,11 @@ def parse_headers_enhanced(headers):
         'time': None,
         'datetime': None
     }
-    
+
     for i, h in enumerate(headers):
         h_clean = str(h).strip()
         header_lower = h_clean.lower()
-       
+
         # Date/Time detection first
         if any(keyword in header_lower for keyword in ['timestamp', 'datetime']):
             mapping['datetime'] = i
@@ -250,28 +51,28 @@ def parse_headers_enhanced(headers):
             mapping['date'] = i
         elif any(keyword in header_lower for keyword in ['time']) and mapping['time'] is None:
             mapping['time'] = i
-        
+
         # Relative Humidity detection
         elif any(keyword in header_lower for keyword in ['rel hum', 'rel. hum', 'relative humidity', 'rh']):
             if any(kw in header_lower for kw in ['oa rh', 'outdoor', 'outside', 'outside air rh']):
                 mapping['outdoorRH'].append(i)
             else:
                 mapping['indoorRH'].append(i)
-        
+
         # Indoor Temperature detection
         elif any(keyword in header_lower for keyword in ['indoor temp', 'indoor temperature', 'room temp', 'spacetemp','space temp','space-temp']):
             mapping['indoorTemps'].append(i)
-        
+
         # Enhanced temperature detection
         elif any(keyword in header_lower for keyword in ['1suctmp1','suctmp', 'suc tmp', 'suction tmp', 'suction_tmp', 'suction temp', 'suction-temp']):
             mapping['suctionTemps'].append(i)
-        
+
         elif any(keyword in header_lower for keyword in ['sat', 'supply air', 'supply_air', 'discharge temp']):
             mapping['supplyAirTemps'].append(i)
-        
+
         elif any(keyword in header_lower for keyword in ['dischg', 'dis chg', 'discharge']) and 'temp' in header_lower:
             mapping['dischargeTemps'].append(i)
-        
+
         elif any(keyword in header_lower for keyword in ['oat', 'outdoor', 'outside']) and ('temp' in header_lower or 'air' in header_lower):
             mapping['outdoorAirTemps'].append(i)
 
@@ -279,84 +80,125 @@ def parse_headers_enhanced(headers):
         elif any(keyword in header_lower for keyword in ['1sucpr1','suction', 'sucpr','suc pr', 'suction pr', 'suction_pr']) or \
              (('suc' in header_lower or 'suction' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['suctionPressures'].append(i)
-        
+
         elif any(keyword in header_lower for keyword in ['1dischg1','dischg', 'dis chg', 'discharge pr', 'head pr', 'headpr', '1cond1', '1headpr1']) or \
              (('discharge' in header_lower or 'head' in header_lower or 'cond' in header_lower) and ('pr' in header_lower or 'pressure' in header_lower)):
             mapping['dischargePressures'].append(i)
-        
+
         # Setpoint detection
         elif any(keyword in header_lower for keyword in ['csp', 'cool', 'cooling']) and ('sp' in header_lower or 'setpoint' in header_lower):
             mapping['coolingSetpoints'].append(i)
-        
+
         elif any(keyword in header_lower for keyword in ['hsp', 'heat', 'heating']) and ('sp' in header_lower or 'setpoint' in header_lower):
             mapping['heatingSetpoints'].append(i)
-    
+
     return mapping
 
-def process_large_csv(file_path, chunk_size=1000):
-    """
-    Process large CSV files in chunks to avoid memory issues
-    """
+def create_datetime_column(df, mapping):
+    """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     try:
-        # Read the file in chunks
-        chunks = []
-        
-        # First, read just the header
-        df_header = pd.read_csv(file_path, nrows=2)
-        headers = df_header.columns.tolist()
-        
-        # Parse headers
-        mapping = parse_headers_enhanced(headers)
-        
-        print(f"Reading CSV file: {file_path}")
-        print(f"Headers found: {len(headers)}")
-        
-        # Read the full file (if it's not too large) or in chunks
-        try:
-            df = pd.read_csv(file_path)
-            print(f"Successfully loaded {len(df)} rows")
-        except MemoryError:
-            print("File too large, processing in chunks...")
-            # Process in chunks if memory is an issue
-            chunk_list = []
-            for chunk in pd.read_csv(file_path, chunksize=chunk_size):
-                chunk_list.append(chunk)
-            df = pd.concat(chunk_list, ignore_index=True)
-            print(f"Successfully loaded {len(df)} rows in chunks")
-        
-        # Create datetime column
-        df = create_datetime_column_robust(df, mapping)
-        
-        # Filter meaningful columns
-        print("Filtering meaningful columns...")
-        meaningful_cols = filter_meaningful_columns_optimized(df)
-        print(f"Found {len(meaningful_cols)} meaningful columns")
-        
-        # Create filtered dataframe
-        filtered_cols = meaningful_cols + ['parsed_datetime']
-        filtered_df = df[filtered_cols].copy()
-        
-        return filtered_df, headers, mapping
-        
+        if mapping['datetime'] is not None:
+            df['parsed_datetime'] = pd.to_datetime(df.iloc[:, mapping['datetime']], errors='coerce')
+        elif mapping['date'] is not None and mapping['time'] is not None:
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
+            time_col = df.iloc[:, mapping['time']].astype(str).str.strip()
+
+            # Convert '31-May' to '2024-05-31'
+            def convert_date(date_str):
+                if pd.isna(date_str) or date_str == 'nan':
+                    return None
+                if '-' in date_str and len(date_str.split('-')) == 2:
+                    parts = date_str.split('-')
+                    if parts[0].isdigit():
+                        day = parts[0]
+                        month = parts[1]
+                        # Convert month name to number
+                        month_map = {
+                            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                        }
+                        month_num = month_map.get(month.lower()[:3], month)
+                        return f"2024-{month_num}-{day.zfill(2)}"
+                return date_str
+
+            date_col = date_col.apply(convert_date)
+            datetime_str = date_col + ' ' + time_col
+            df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+        elif mapping['date'] is not None:
+            date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
+            date_col = date_col.apply(lambda x: convert_date(x) if callable(convert_date) else x)
+            df['parsed_datetime'] = pd.to_datetime(date_col, errors='coerce')
+        else:
+            df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        return df
     except Exception as e:
-        print(f"Error processing CSV: {e}")
-        return None, None, None
+        st.warning(f"Could not parse datetime: {e}. Using sequential index.")
+        df['parsed_datetime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+        return df
+
+def filter_meaningful_columns_strict(df, zero_threshold=0.95):
+    """
+    Filter out columns that are empty, contain only zeros, mostly zeros, or only meaningless values
+    zero_threshold: if more than this percentage of values are zero, exclude the column
+    """
+    meaningful_columns = []
+
+    for col in df.columns:
+        if col in df.columns:
+            # Convert column to numeric, coercing errors to NaN
+            numeric_col = pd.to_numeric(df[col], errors='coerce')
+
+            # Check if column has any meaningful data
+            if not numeric_col.isna().all():  # Not all NaN
+                # Remove NaN values for analysis
+                clean_data = numeric_col.dropna()
+
+                if len(clean_data) > 0:
+                    # Check if ALL values are zero
+                    if (clean_data == 0).all():
+                        continue  # Skip columns with all zeros
+
+                    # NEW: Check if mostly zeros (optional stricter filtering)
+                    zero_percentage = (clean_data == 0).sum() / len(clean_data)
+                    if zero_percentage > zero_threshold:
+                        continue  # Skip columns that are mostly zeros
+
+                    # Check if there's actual variation
+                    if clean_data.nunique() > 1:
+                        meaningful_columns.append(col)
+                    elif clean_data.iloc[0] != 0:
+                        meaningful_columns.append(col)
+                else:
+
+                    # Check for text columns that might contain meaningful non-numeric data
+                    text_col = df[col].astype(str).str.lower().str.strip()
+                    unique_values = text_col.unique()
+
+                    # Filter out common empty/meaningless values
+                    meaningless_values = {'nan', 'none', 'null', '', '0', 'o', 'na', 'n/a'}
+                    meaningful_values = [val for val in unique_values if val not in meaningless_values]
+
+                    if len(meaningful_values) > 0:
+                        meaningful_columns.append(col)
+
+    return meaningful_columns
 
 def generate_enhanced_data_summary(df_summary):
     """Generate data summary with filtered meaningful columns"""
     if df_summary is None or df_summary.empty:
         return [['No data available for analysis']]
-    
+
     try:
         # Filter for meaningful columns
         meaningful_cols = filter_meaningful_columns_strict(df_summary)
         meaningful_cols = [col for col in meaningful_cols if col != 'parsed_datetime']
         if not meaningful_cols:
             return [['No meaningful data columns found']]
-        
+
         # Create dataframe with only meaningful columns
         meaningful_df = df_summary[meaningful_cols].copy()
-        
+
         # Convert meaningful columns to numeric where possible
         numeric_data = {}
         for col in meaningful_cols:
@@ -366,13 +208,13 @@ def generate_enhanced_data_summary(df_summary):
                 if len(clean_data) > 0:
                     if clean_data.abs().max() > 0.1 and clean_data.nunique() > 1:
                         numeric_data[col] = clean_data
-        
+
         if not numeric_data:
             return [['No meaningful numeric data available for statistical analysis']]
-        
+
         # Generate statistics table
         stats_data = [['Parameter', 'Mean', 'Min', 'Max', 'Std Dev']]
-        
+
         def format_value(val): 
             if pd.isna(val):
                 return "None"
@@ -382,7 +224,7 @@ def generate_enhanced_data_summary(df_summary):
                 return f"{val:.2f}"
             else:
                 return f"{val:.3f}"
-        
+
         for col in sorted(numeric_data.keys()):
             clean_data = numeric_data[col]
             if clean_data.empty:
@@ -392,11 +234,11 @@ def generate_enhanced_data_summary(df_summary):
             min_val = clean_data.min()
             max_val = clean_data.max()
             std_val = clean_data.std()
-            
+
             # Skip rows where all stats are NaN or None
             if all(pd.isna(val) for val in [mean_val, min_val, max_val, std_val]):
                 continue
-                
+
             stats_data.append([
                 col[:30],
                 format_value(mean_val),
@@ -404,9 +246,9 @@ def generate_enhanced_data_summary(df_summary):
                 format_value(max_val),
                 format_value(std_val),
             ])
-        
+
         return stats_data if len(stats_data) > 1 else [['No meaningful statistics available after filtering']]
-    
+
     except Exception as e:
         print(f"Error in generate_enhanced_data_summary: {str(e)}")
         return [['Error generating statistics:', str(e)]]
@@ -462,7 +304,7 @@ def test_filtering_with_sample_data():
     """Test the filtering function with sample data similar to your CSV"""
     import pandas as pd
     import numpy as np
-    
+
     # Create sample data similar to your CSV structure
     sample_data = {
         'Date': ['31-May', '31-May', '31-May'],
@@ -476,25 +318,25 @@ def test_filtering_with_sample_data():
         'TinyVarCol': [0.01, -0.01, 0.02],  # Should be filtered out (too small)
         'MeaningfulTemp': [75.3, 76.1, 74.9]  # Should be kept
     }
-    
+
     df_test = pd.DataFrame(sample_data)
     meaningful_cols = filter_meaningful_columns(df_test)
-    
+
     print("Test Results:")
     print(f"All columns: {list(df_test.columns)}")
     print(f"Meaningful columns: {meaningful_cols}")
     print(f"Filtered out: {set(df_test.columns) - set(meaningful_cols)}")
-    
+
     # Test the summary generation
     summary_result = generate_enhanced_data_summary(df_test)
     print("\nSummary table:")
     for row in summary_result:
         print(row)
-        
+
 def check_comfort_conditions(df, headers, mapping):
     """Check indoor comfort conditions"""
     results = []
-    
+
     # Check relative humidity
     for idx in mapping.get('indoorRH', []):
         col_name = headers[idx].lower()
@@ -528,13 +370,13 @@ def check_comfort_conditions(df, headers, mapping):
                 'percent_outside': percent_outside,
                 'compliant': percent_outside == 0
             })
-    
+
     return results
 
 def analyze_hvac_data_enhanced(df, headers, mapping):
     """Enhanced HVAC analysis with 50+ comprehensive diagnostic checks"""
     issues = []
-    
+
     # === BASIC PRESSURE DIAGNOSTICS ===
     # Check suction pressures
     for idx in mapping['suctionPressures']:
@@ -544,7 +386,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             std_pressure = col_data.std()
             max_pressure = col_data.max()
             min_pressure = col_data.min()
-            
+
             if avg_pressure > 200:
                 issues.append({
                     'message': f'High suction pressure detected in {headers[idx]} (Avg: {avg_pressure:.1f} PSI)',
@@ -561,7 +403,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     'suggestions': ['Check for refrigerant leaks', 'Inspect expansion valve', 'Verify system charge'],
                     'issue_type': 'refrigerant_system'
                 })
-            
+
             # Pressure variability analysis
             if std_pressure > 15:
                 issues.append({
@@ -571,7 +413,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     'suggestions': ['Check expansion valve operation', 'Inspect refrigerant flow', 'Verify system controls'],
                     'issue_type': 'control_system'
                 })
-    
+
     # Check discharge pressures with advanced diagnostics
     for idx in mapping['dischargePressures']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
@@ -580,7 +422,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             std_pressure = col_data.std()
             max_pressure = col_data.max()
             min_pressure = col_data.min()
-            
+
             if avg_pressure > 400:
                 issues.append({
                     "severity": "high", 
@@ -597,7 +439,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check refrigerant charge", "Test compressor valves", "Inspect for internal leaks", "Verify compressor operation"],
                     "issue_type": "compressor_system"
                 })
-            
+
             # Discharge pressure instability
             if std_pressure > 20:
                 issues.append({
@@ -607,7 +449,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check condenser fan control", "Inspect refrigerant metering", "Verify system capacity"],
                     "issue_type": "condenser_system"
                 })
-    
+
     # === TEMPERATURE DIAGNOSTICS ===
     # Enhanced suction temperature analysis
     for idx in mapping['suctionTemps']:
@@ -617,7 +459,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             std_temp = col_data.std()
             max_temp = col_data.max()
             min_temp = col_data.min()
-            
+
             if avg_temp > 65:
                 issues.append({
                     "severity": "medium",
@@ -634,7 +476,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check superheat immediately", "Verify proper airflow", "Inspect expansion valve", "Check for flooding"],
                     "issue_type": "refrigerant_system"
                 })
-            
+
             # Temperature stability analysis
             if std_temp > 8:
                 issues.append({
@@ -644,7 +486,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check evaporator coil", "Inspect refrigerant distribution", "Verify airflow patterns"],
                     "issue_type": "evaporator_system"
                 })
-    
+
     # Supply air temperature diagnostics
     for idx in mapping['supplyAirTemps'] + mapping['dischargeTemps']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
@@ -653,7 +495,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             std_temp = col_data.std()
             max_temp = col_data.max()
             min_temp = col_data.min()
-            
+
             if avg_temp > 120:
                 issues.append({
                     "severity": "high",
@@ -670,7 +512,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check thermostat settings", "Verify cooling load", "Inspect damper operation", "Check for overcooling"],
                     "issue_type": "control_system"
                 })
-            
+
             # Supply air temperature spread analysis
             temp_spread = max_temp - min_temp
             if temp_spread > 25:
@@ -681,7 +523,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check capacity control", "Verify load calculations", "Inspect modulation systems", "Review control sequences"],
                     "issue_type": "capacity_control"
                 })
-    
+
     # === ADVANCED REFRIGERANT CYCLE ANALYSIS ===
     # Pressure ratio analysis
     if mapping['suctionPressures'] and mapping['dischargePressures']:
@@ -689,17 +531,17 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             for discharge_idx in mapping['dischargePressures']:
                 suction_data = pd.to_numeric(df.iloc[:, suction_idx], errors='coerce').dropna()
                 discharge_data = pd.to_numeric(df.iloc[:, discharge_idx], errors='coerce').dropna()
-                
+
                 if len(suction_data) > 0 and len(discharge_data) > 0:
                     # Align data lengths
                     min_len = min(len(suction_data), len(discharge_data))
                     suction_aligned = suction_data.iloc[:min_len]
                     discharge_aligned = discharge_data.iloc[:min_len]
-                    
+
                     # Calculate pressure ratio
                     pressure_ratio = discharge_aligned / suction_aligned
                     avg_ratio = pressure_ratio.mean()
-                    
+
                     if avg_ratio > 4.5:
                         issues.append({
                             "severity": "high",
@@ -716,7 +558,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Test compressor valves", "Check internal leakage", "Verify compressor condition", "Inspect refrigerant circuit"],
                             "issue_type": "compressor_wear"
                         })
-    
+
     # === HUMIDITY AND COMFORT DIAGNOSTICS ===
     # Indoor humidity analysis
     for idx in mapping.get('indoorRH', []):
@@ -726,7 +568,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             max_humidity = col_data.max()
             min_humidity = col_data.min()
             std_humidity = col_data.std()
-            
+
             if avg_humidity > 60:
                 issues.append({
                     "severity": "medium",
@@ -743,7 +585,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Add humidification systems", "Check for excessive ventilation", "Inspect building envelope"],
                     "issue_type": "humidity_control"
                 })
-            
+
             # Humidity variability
             if std_humidity > 10:
                 issues.append({
@@ -753,7 +595,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check humidity control systems", "Verify proper sizing", "Inspect control sequences"],
                     "issue_type": "humidity_control"
                 })
-    
+
     # === ENERGY EFFICIENCY DIAGNOSTICS ===
     # Temperature differential analysis
     if mapping.get('supplyAirTemps') and mapping.get('indoorTemps'):
@@ -761,12 +603,12 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             for return_idx in mapping['indoorTemps']:
                 supply_data = pd.to_numeric(df.iloc[:, supply_idx], errors='coerce').dropna()
                 return_data = pd.to_numeric(df.iloc[:, return_idx], errors='coerce').dropna()
-                
+
                 if len(supply_data) > 0 and len(return_data) > 0:
                     min_len = min(len(supply_data), len(return_data))
                     temp_diff = return_data.iloc[:min_len] - supply_data.iloc[:min_len]
                     avg_diff = temp_diff.mean()
-                    
+
                     if avg_diff < 15:
                         issues.append({
                             "severity": "medium",
@@ -783,7 +625,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Check fan operation", "Inspect ductwork", "Verify equipment sizing", "Check filter restrictions"],
                             "issue_type": "airflow_restriction"
                         })
-    
+
     # === SYSTEM CYCLING AND CONTROL ISSUES ===
     # Detect short cycling by analyzing data patterns
     for pressure_group in [mapping['suctionPressures'], mapping['dischargePressures']]:
@@ -794,7 +636,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 changes = col_data.diff().abs()
                 rapid_changes = (changes > changes.std() * 2).sum()
                 change_rate = rapid_changes / len(col_data)
-                
+
                 if change_rate > 0.2:  # More than 20% of readings show rapid changes
                     issues.append({
                         "severity": "medium",
@@ -803,24 +645,24 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                         "suggestions": ["Check thermostat differential", "Verify system sizing", "Inspect control systems", "Check for refrigerant issues"],
                         "issue_type": "short_cycling"
                     })
-    
+
     # === ADDITIONAL NICHE DIAGNOSTICS ===
-    
+
     # 1. Subcooling analysis (if both discharge temp and pressure available)
     if mapping.get('dischargeTemps') and mapping.get('dischargePressures'):
         for temp_idx in mapping['dischargeTemps']:
             for press_idx in mapping['dischargePressures']:
                 temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
                 press_data = pd.to_numeric(df.iloc[:, press_idx], errors='coerce').dropna()
-                
+
                 if len(temp_data) > 0 and len(press_data) > 0:
                     avg_temp = temp_data.mean()
                     avg_press = press_data.mean()
-                    
+
                     # Estimate subcooling (simplified calculation)
                     estimated_saturation_temp = 32 + (avg_press - 14.7) * 0.25  # Rough approximation
                     subcooling = estimated_saturation_temp - avg_temp
-                    
+
                     if subcooling < 5:
                         issues.append({
                             "severity": "medium",
@@ -837,19 +679,19 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Check for overcharge", "Verify condenser operation", "Consider load conditions"],
                             "issue_type": "subcooling_high"
                         })
-    
+
     # 2. Setpoint deviation analysis
     if mapping.get('coolingSetpoints') and mapping.get('indoorTemps'):
         for setpoint_idx in mapping['coolingSetpoints']:
             for temp_idx in mapping['indoorTemps']:
                 setpoint_data = pd.to_numeric(df.iloc[:, setpoint_idx], errors='coerce').dropna()
                 temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
-                
+
                 if len(setpoint_data) > 0 and len(temp_data) > 0:
                     min_len = min(len(setpoint_data), len(temp_data))
                     deviation = temp_data.iloc[:min_len] - setpoint_data.iloc[:min_len]
                     avg_deviation = deviation.mean()
-                    
+
                     if avg_deviation > 3:
                         issues.append({
                             "severity": "medium",
@@ -866,7 +708,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Check control settings", "Verify equipment sizing", "Inspect thermostat operation"],
                             "issue_type": "overcooling"
                         })
-    
+
     # 3. Refrigerant migration detection
     for idx in mapping['suctionPressures']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
@@ -874,7 +716,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             # Look for pressure changes during off cycles
             pressure_changes = col_data.diff()
             large_drops = (pressure_changes < -10).sum()
-            
+
             if large_drops > len(col_data) * 0.1:  # More than 10% of readings show large drops
                 issues.append({
                     "severity": "low",
@@ -883,20 +725,20 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     "suggestions": ["Check crankcase heater", "Inspect liquid line solenoid", "Verify proper shutdown procedures"],
                     "issue_type": "refrigerant_migration"
                 })
-    
+
     # 4. Liquid line restrictions
     if mapping.get('suctionPressures') and mapping.get('dischargePressures'):
         for suct_idx in mapping['suctionPressures']:
             for disch_idx in mapping['dischargePressures']:
                 suct_data = pd.to_numeric(df.iloc[:, suct_idx], errors='coerce').dropna()
                 disch_data = pd.to_numeric(df.iloc[:, disch_idx], errors='coerce').dropna()
-                
+
                 if len(suct_data) > 0 and len(disch_data) > 0:
                     # Look for pressure differential patterns
                     min_len = min(len(suct_data), len(disch_data))
                     pressure_diff = disch_data.iloc[:min_len] - suct_data.iloc[:min_len]
                     std_diff = pressure_diff.std()
-                    
+
                     if std_diff > 30:  # High variability in pressure differential
                         issues.append({
                             "severity": "medium",
@@ -905,7 +747,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Check liquid line filters", "Inspect expansion valve", "Verify proper refrigerant flow", "Check for moisture/debris"],
                             "issue_type": "flow_restriction"
                         })
-    
+
     # 5. Compressor efficiency analysis
     for idx in mapping['dischargePressures']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
@@ -915,7 +757,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 first_half = col_data.iloc[:len(col_data)//2].mean()
                 second_half = col_data.iloc[len(col_data)//2:].mean()
                 pressure_decline = first_half - second_half
-                
+
                 if pressure_decline > 15:
                     issues.append({
                         "severity": "medium",
@@ -924,7 +766,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                         "suggestions": ["Monitor compressor performance", "Check for refrigerant leaks", "Consider compressor evaluation"],
                         "issue_type": "compressor_degradation"
                     })
-    
+
     # 6. Evaporator icing risk
     for idx in mapping['suctionTemps']:
         col_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
@@ -945,7 +787,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             if len(col_data) > 0:
                 avg_dewpoint = col_data.mean()
                 max_dewpoint = col_data.max()
-                
+
                 if avg_dewpoint > 60:
                     issues.append({
                         "severity": "high",
@@ -954,7 +796,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                         "suggestions": ["Increase dehumidification capacity", "Check building envelope", "Verify ventilation rates", "Inspect for moisture sources"],
                         "issue_type": "moisture_control"
                     })
-                
+
                 if max_dewpoint > 65:
                     issues.append({
                         "severity": "high",
@@ -971,7 +813,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 avg_speed = col_data.mean()
                 std_speed = col_data.std()
                 min_speed = col_data.min()
-                
+
                 # Fan speed variability
                 if std_speed > avg_speed * 0.15:  # More than 15% variation
                     issues.append({
@@ -981,7 +823,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                         "suggestions": ["Check fan motor condition", "Inspect electrical connections", "Verify VFD operation", "Check control signals"],
                         "issue_type": "fan_instability"
                     })
-                
+
                 # Low fan speed detection
                 if min_speed < avg_speed * 0.5 and min_speed > 0:
                     issues.append({
@@ -998,14 +840,14 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 for press_idx in mapping['suctionPressures']:
                     temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
                     press_data = pd.to_numeric(df.iloc[:, press_idx], errors='coerce').dropna()
-                    
+
                     if len(temp_data) > 0 and len(press_data) > 0:
                         min_len = min(len(temp_data), len(press_data))
                         # Simplified saturation temperature calculation
                         sat_temp = 32 + (press_data.iloc[:min_len] - 14.7) * 0.3  # Rough R-410A approximation
                         superheat = temp_data.iloc[:min_len] - sat_temp
                         avg_superheat = superheat.mean()
-                        
+
                         if avg_superheat < 5:
                             issues.append({
                                 "severity": "high",
@@ -1028,7 +870,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             outdoor_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
             if len(outdoor_data) > 0:
                 freezing_conditions = (outdoor_data < 40).sum()  # Conditions where defrost may be needed
-                
+
                 if freezing_conditions > len(outdoor_data) * 0.3:  # More than 30% of time in defrost conditions
                     # Check if system is showing signs of frost buildup
                     for press_idx in mapping.get('suctionPressures', []):
@@ -1051,13 +893,13 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 for indoor_idx in mapping['indoorTemps']:
                     outdoor_data = pd.to_numeric(df.iloc[:, outdoor_idx], errors='coerce').dropna()
                     indoor_data = pd.to_numeric(df.iloc[:, indoor_idx], errors='coerce').dropna()
-                    
+
                     if len(outdoor_data) > 0 and len(indoor_data) > 0:
                         min_len = min(len(outdoor_data), len(indoor_data))
-                        
+
                         # Find times when economizer should be active (outdoor < indoor - 2°F)
                         economizer_opportunity = (outdoor_data.iloc[:min_len] < indoor_data.iloc[:min_len] - 2).sum()
-                        
+
                         if economizer_opportunity > min_len * 0.2:  # More than 20% of time
                             issues.append({
                                 "severity": "low",
@@ -1072,7 +914,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             setpoint_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
             if len(setpoint_data) > 0:
                 setpoint_range = setpoint_data.max() - setpoint_data.min()
-                
+
                 if setpoint_range < 5:
                     issues.append({
                         "severity": "low",
@@ -1088,12 +930,12 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 for cool_idx in mapping['coolingSetpoints']:
                     heat_data = pd.to_numeric(df.iloc[:, heat_idx], errors='coerce').dropna()
                     cool_data = pd.to_numeric(df.iloc[:, cool_idx], errors='coerce').dropna()
-                    
+
                     if len(heat_data) > 0 and len(cool_data) > 0:
                         min_len = min(len(heat_data), len(cool_data))
                         deadband = cool_data.iloc[:min_len] - heat_data.iloc[:min_len]
                         avg_deadband = deadband.mean()
-                        
+
                         if avg_deadband < 3:
                             issues.append({
                                 "severity": "medium",
@@ -1109,7 +951,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 power_data = pd.to_numeric(df.iloc[:, idx], errors='coerce').dropna()
                 if len(power_data) > 0:
                     power_variation = power_data.std() / power_data.mean()
-                    
+
                     if power_variation > 0.3:  # High power variation
                         issues.append({
                             "severity": "medium",
@@ -1126,7 +968,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 if len(oa_flow_data) > 0:
                     avg_oa_flow = oa_flow_data.mean()
                     min_oa_flow = oa_flow_data.min()
-                    
+
                     # Check for inadequate outdoor air
                     if min_oa_flow < avg_oa_flow * 0.5:
                         issues.append({
@@ -1144,7 +986,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 if len(filter_dp_data) > 0:
                     max_filter_dp = filter_dp_data.max()
                     avg_filter_dp = filter_dp_data.mean()
-                    
+
                     if max_filter_dp > 2.0:  # High filter pressure drop
                         issues.append({
                             "severity": "medium",
@@ -1160,22 +1002,22 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 for rh_idx in mapping['indoorRH']:
                     temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
                     rh_data = pd.to_numeric(df.iloc[:, rh_idx], errors='coerce').dropna()
-                    
+
                     if len(temp_data) > 0 and len(rh_data) > 0:
                         min_len = min(len(temp_data), len(rh_data))
-                        
+
                         # Simple comfort analysis (ASHRAE comfort zone approximation)
                         comfort_violations = 0
                         for i in range(min_len):
                             temp = temp_data.iloc[i]
                             rh = rh_data.iloc[i]
-                            
+
                             # Basic comfort zone check (68-78°F, 30-60% RH)
                             if temp < 68 or temp > 78 or rh < 30 or rh > 60:
                                 comfort_violations += 1
-                        
+
                         comfort_compliance = (min_len - comfort_violations) / min_len
-                        
+
                         if comfort_compliance < 0.8:  # Less than 80% compliance
                             issues.append({
                                 "severity": "low",
@@ -1191,16 +1033,16 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 for temp_idx in mapping['outdoorAirTemps']:
                     power_data = pd.to_numeric(df.iloc[:, power_idx], errors='coerce').dropna()
                     temp_data = pd.to_numeric(df.iloc[:, temp_idx], errors='coerce').dropna()
-                    
+
                     if len(power_data) > 20 and len(temp_data) > 20:
                         min_len = min(len(power_data), len(temp_data))
-                        
+
                         # Look for efficiency degradation over time
                         first_quarter = power_data.iloc[:min_len//4].mean()
                         last_quarter = power_data.iloc[3*min_len//4:].mean()
-                        
+
                         efficiency_change = (last_quarter - first_quarter) / first_quarter
-                        
+
                         if efficiency_change > 0.15:  # More than 15% increase in power consumption
                             issues.append({
                                 "severity": "medium",
@@ -1217,7 +1059,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 if len(pressure_data) > 0:
                     avg_pressure = pressure_data.mean()
                     std_pressure = pressure_data.std()
-                    
+
                     if abs(avg_pressure) > 0.05:  # More than 0.05" WC
                         issues.append({
                             "severity": "medium",
@@ -1226,7 +1068,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Balance supply and return air", "Check building envelope", "Verify exhaust systems", "Inspect damper operation"],
                             "issue_type": "pressure_imbalance"
                         })
-                    
+
                     if std_pressure > 0.02:  # Unstable pressure
                         issues.append({
                             "severity": "low",
@@ -1242,7 +1084,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
             if len(pressure_data) > 50:  # Need substantial data
                 # Look for gradual pressure decline over time
                 trend_slope = np.polyfit(range(len(pressure_data)), pressure_data, 1)[0]
-                
+
                 if trend_slope < -0.1:  # Declining trend
                     issues.append({
                         "severity": "high",
@@ -1259,7 +1101,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 if len(level_data) > 0:
                     max_level = level_data.max()
                     avg_level = level_data.mean()
-                    
+
                     if max_level > 0.8:  # High water level (assuming normalized 0-1 scale)
                         issues.append({
                             "severity": "high",
@@ -1277,7 +1119,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     avg_output = vfd_data.mean()
                     max_output = vfd_data.max()
                     min_output = vfd_data.min()
-                    
+
                     if avg_output > 90:  # Consistently high VFD output
                         issues.append({
                             "severity": "medium",
@@ -1286,7 +1128,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                             "suggestions": ["Check system load requirements", "Verify equipment sizing", "Inspect for restrictions", "Consider capacity upgrades"],
                             "issue_type": "vfd_high_output"
                         })
-                    
+
                     if max_output - min_output < 20 and avg_output > 50:  # Limited modulation
                         issues.append({
                             "severity": "low",
@@ -1303,7 +1145,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 if len(co2_data) > 0:
                     max_co2 = co2_data.max()
                     avg_co2 = co2_data.mean()
-                    
+
                     if max_co2 > 1000:  # High CO2 levels
                         issues.append({
                             "severity": "medium",
@@ -1322,7 +1164,7 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                     temp_changes = temp_data.diff().abs()
                     significant_changes = (temp_changes > temp_changes.std()).sum()
                     cycle_frequency = significant_changes / len(temp_data)
-                    
+
                     if cycle_frequency > 0.15:  # More than 15% of readings show significant changes
                         issues.append({
                             "severity": "low",
@@ -1335,11 +1177,11 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
         # Deduplicate similar issues
         seen_issues = {}
         deduplicated_issues = []
-        
+
         for issue in issues:
             # Create a key based on issue type and main message content
             key_parts = [issue['issue_type'], issue['severity']]
-            
+
             # For certain issue types, make the key more specific to avoid over-deduplication
             if issue['issue_type'] in ['thermal_comfort', 'humidity_control', 'pressure_imbalance']:
                 # Extract the main diagnostic value from message
@@ -1347,9 +1189,9 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 values = re.findall(r'\d+\.?\d*', issue['message'])
                 if values:
                     key_parts.append(values[0])  # Use first numerical value
-            
+
             key = tuple(key_parts)
-            
+
             if key not in seen_issues:
                 seen_issues[key] = len(deduplicated_issues)
                 deduplicated_issues.append(issue)
@@ -1359,19 +1201,19 @@ def analyze_hvac_data_enhanced(df, headers, mapping):
                 existing_suggestions = set(deduplicated_issues[existing_idx]['suggestions'])
                 new_suggestions = set(issue['suggestions'])
                 deduplicated_issues[existing_idx]['suggestions'] = list(existing_suggestions | new_suggestions)
-        
+
         issues = deduplicated_issues
-    
+
     return issues
 
 def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     """Generate a comprehensive PDF report"""
     if not REPORTLAB_AVAILABLE:
         return None
-        
+
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
-    
+
     # Get styles
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -1382,7 +1224,7 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
         alignment=TA_CENTER,
         textColor=colors.darkblue
     )
-    
+
     heading_style = ParagraphStyle(
         'CustomHeading',
         parent=styles['Heading2'],
@@ -1391,7 +1233,7 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
         spaceBefore=12,
         textColor=colors.darkblue
     )
-    
+
     subheading_style = ParagraphStyle(
         'CustomSubHeading',
         parent=styles['Heading3'],
@@ -1400,13 +1242,13 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
         spaceBefore=8,
         textColor=colors.darkred
     )
-    
+
     normal_style = styles['Normal']
     normal_style.alignment = TA_JUSTIFY
-    
+
     # Build the PDF content
     story = []
-    
+
     # Add logo if provided
     if logo_file:
         try:
@@ -1417,20 +1259,20 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
             story.append(Spacer(1, 12))
         except:
             pass
-    
+
     # Title
     story.append(Paragraph(project_title, title_style))
     story.append(Paragraph("HVAC Diagnostic Analysis Report", heading_style))
     story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", normal_style))
     story.append(Spacer(1, 20))
-    
+
     # Executive Summary
     story.append(Paragraph("Executive Summary", heading_style))
     if issues:
         high_count = len([i for i in issues if i['severity'] == 'high'])
         medium_count = len([i for i in issues if i['severity'] == 'medium'])
         low_count = len([i for i in issues if i['severity'] == 'low'])
-        
+
         summary_text = f"""
         This report analyzes HVAC system performance data and identifies {len(issues)} total issues requiring attention:
         <br/>• {high_count} High Priority Issues (require immediate attention)
@@ -1440,58 +1282,58 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
         story.append(Paragraph(summary_text, normal_style))
     else:
         story.append(Paragraph("System analysis shows no immediate issues detected. All parameters appear to be within normal operating ranges.", normal_style))
-    
+
     story.append(Spacer(1, 20))
-    
+
     # Detailed Findings
     story.append(Paragraph("Detailed Findings", heading_style))
-    
+
     if issues:
         # Group issues by severity
         high_issues = [i for i in issues if i['severity'] == 'high']
         medium_issues = [i for i in issues if i['severity'] == 'medium']
         low_issues = [i for i in issues if i['severity'] == 'low']
-        
+
         # High Priority Issues
         if high_issues:
             story.append(Paragraph("🔴 HIGH PRIORITY ISSUES", subheading_style))
             for i, issue in enumerate(high_issues, 1):
                 story.append(Paragraph(f"<b>{i}. {issue['message']}</b>", normal_style))
                 story.append(Paragraph(f"<b>Explanation:</b> {issue['explanation']}", normal_style))
-                
+
                 recommendations = "<br/>".join([f"• {rec}" for rec in issue['suggestions']])
                 story.append(Paragraph(f"<b>Recommended Actions:</b><br/>{recommendations}", normal_style))
                 story.append(Spacer(1, 12))
-        
+
         # Medium Priority Issues
         if medium_issues:
             story.append(Paragraph("🟡 MEDIUM PRIORITY ISSUES", subheading_style))
             for i, issue in enumerate(medium_issues, 1):
                 story.append(Paragraph(f"<b>{i}. {issue['message']}</b>", normal_style))
                 story.append(Paragraph(f"<b>Explanation:</b> {issue['explanation']}", normal_style))
-                
+
                 recommendations = "<br/>".join([f"• {rec}" for rec in issue['suggestions']])
                 story.append(Paragraph(f"<b>Recommended Actions:</b><br/>{recommendations}", normal_style))
                 story.append(Spacer(1, 12))
-        
+
         # Low Priority Issues
         if low_issues:
             story.append(Paragraph("🔵 LOW PRIORITY ISSUES", subheading_style))
             for i, issue in enumerate(low_issues, 1):
                 story.append(Paragraph(f"<b>{i}. {issue['message']}</b>", normal_style))
                 story.append(Paragraph(f"<b>Explanation:</b> {issue['explanation']}", normal_style))
-                
+
                 recommendations = "<br/>".join([f"• {rec}" for rec in issue['suggestions']])
                 story.append(Paragraph(f"<b>Recommended Actions:</b><br/>{recommendations}", normal_style))
                 story.append(Spacer(1, 12))
-    
+
         # Add data summary if provided
         if df_summary is not None:
             story.append(Spacer(1, 20))
             story.append(Paragraph("Data Summary Statistics", heading_style))
-            
+
             stats_data = generate_enhanced_data_summary(df_summary)
-        
+
             if stats_data and len(stats_data) > 1:
                 table = Table(stats_data, colWidths=[2.5*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.6*inch])
                 table.setStyle(TableStyle([
@@ -1509,7 +1351,7 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
                 story.append(table)
             else:
                 story.append(Paragraph("No meaningful data available for statistical analysis.", normal_style))
-            
+
     # Footer
     story.append(Spacer(1, 30))
     story.append(Paragraph("Report Notes", heading_style))
@@ -1518,10 +1360,10 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
     All recommendations should be verified by qualified HVAC technicians before implementation. 
     Regular maintenance and professional inspections are essential for optimal system performance.
     """, normal_style))
-    
+
     story.append(Spacer(1, 20))
     story.append(Paragraph(f"Generated by {project_title} Analysis System", normal_style))
-    
+
     # Build PDF
     doc.build(story)
     buffer.seek(0)
@@ -1530,7 +1372,7 @@ def generate_pdf_report(project_title, logo_file, issues, df_summary=None):
 def read_csv_with_encoding(uploaded_file):
     """Read CSV with proper encoding handling"""
     encodings_to_try = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
-    
+
     for encoding in encodings_to_try:
         try:
             uploaded_file.seek(0)
@@ -1539,16 +1381,11 @@ def read_csv_with_encoding(uploaded_file):
             return df, content
         except Exception as e:
             continue
-    
+
     # If all encodings fail, try with error handling
     uploaded_file.seek(0)
     content = uploaded_file.read().decode('utf-8', errors='replace')
     df = pd.read_csv(StringIO(content))
-    
-    # Skip units row if present
-    if len(df) > 1 and df.iloc[0].astype(str).str.contains('°F|%|PSI|WG', case=False, na=False).any():
-        df = df.drop(index=0).reset_index(drop=True)
-    
     return df, content
 
 def get_legend_label(header):
@@ -1579,29 +1416,28 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
     Filter the dataframe to only include meaningful columns for analysis and plotting
     Returns filtered dataframe and updated mapping
     """
-    
     # Get meaningful columns (excluding datetime and source_file)
     exclude_prefixes = ['SAT-StPt-Clg', 'SAT-StPt-Dehum', 'SAT-StPt-Htg']
     exclude_cols = ['parsed_datetime', 'source_file'] + [
         col for col in df.columns if any(col.startswith(prefix) for prefix in exclude_prefixes)
     ]
-    
     analysis_df = df.drop(columns=[col for col in exclude_cols if col in df.columns])
+
     meaningful_cols = filter_meaningful_columns_strict(analysis_df, zero_threshold)
-    
+
     # Create filtered dataframe with meaningful columns plus datetime
     filtered_cols = meaningful_cols.copy()
     if 'parsed_datetime' in df.columns:
         filtered_cols.append('parsed_datetime')
     if 'source_file' in df.columns:
         filtered_cols.append('source_file')
-    
+
     filtered_df = df[filtered_cols].copy()
-    
+
     # Update mapping to only include meaningful columns
     updated_mapping = {}
     original_headers = df.columns.tolist()
-    
+
     for category, indices in mapping.items():
         if category in ['date', 'time', 'datetime']:
             updated_mapping[category] = indices
@@ -1617,170 +1453,106 @@ def filter_dataframe_for_analysis(df, mapping, zero_threshold=0.95):
                         except KeyError:
                             continue
             updated_mapping[category] = updated_indices
-    
+
     return filtered_df, updated_mapping
-    
+
 # Updated create_time_series_plots function
-def create_optimized_plots(df, headers, mapping, max_series=6):
-    """
-    Create plots optimized for large datasets
-    """
+def create_time_series_plots_filtered(df, headers, mapping):
+    """Create temperature vs time and pressure vs time plots with filtered data"""
     plots = []
-    
-    if df is None or len(df) == 0:
-        return plots
-    
-    # Sample data if too large for plotting
-    if len(df) > 5000:
-        print(f"Dataset has {len(df)} rows, sampling for plotting...")
-        df_plot = df.sample(n=5000, random_state=42).sort_values('parsed_datetime')
-    else:
-        df_plot = df
-    
-    # Temperature plot
-    temp_cols = [col for col in df.columns if 
-                 any(temp_word in col.lower() for temp_word in ['temp', 'sat', 'rat', 'oat', 'coiltmp'])]
-    
-    if temp_cols and 'parsed_datetime' in df_plot.columns:
+
+    # Filter the dataframe first
+    filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
+    filtered_headers = filtered_df.columns.tolist()
+
+    # Temperature vs Time Plot
+    temp_indices = (filtered_mapping['suctionTemps'] + filtered_mapping['supplyAirTemps'] +
+                   filtered_mapping['dischargeTemps'] + filtered_mapping['outdoorAirTemps'] +
+                   filtered_mapping['indoorTemps'])
+
+    if temp_indices and 'parsed_datetime' in filtered_df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        colors = plt.cm.tab10(np.linspace(0, 1, min(len(temp_cols), max_series)))
-        
-        plotted_count = 0
-        for col in temp_cols[:max_series]:
-            try:
-                temp_data = pd.to_numeric(df_plot[col], errors='coerce')
-                valid_mask = ~temp_data.isna() & ~df_plot['parsed_datetime'].isna()
-                
+        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+
+        plotted_any = False
+        for idx_num, idx in enumerate(temp_indices[:6]):  # Limit to 6 columns for readability
+            if idx < len(filtered_headers):
+                temp_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+                valid_mask = ~temp_data.isna() & ~filtered_df['parsed_datetime'].isna()
+
                 if valid_mask.sum() > 0:
-                    ax.plot(df_plot.loc[valid_mask, 'parsed_datetime'],
+                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
                            temp_data[valid_mask],
-                           label=col[:20],  # Truncate long labels
-                           color=colors[plotted_count],
+                           label=get_legend_label(filtered_headers[idx]),
+                           marker='o',
+                           markersize=2,
                            linewidth=1,
-                           alpha=0.8)
-                    plotted_count += 1
-            except Exception as e:
-                continue
-        
-        if plotted_count > 0:
+                           color=colors[idx_num % len(colors)])
+                    plotted_any = True
+
+        if plotted_any:
             ax.set_xlabel('Time')
             ax.set_ylabel('Temperature (°F)')
-            ax.set_title('Temperature Trends Over Time')
+            ax.set_title('Temperature vs Time (Filtered Data)')
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             ax.grid(True, alpha=0.3)
-            
-            # Format x-axis for better readability
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-            plt.xticks(rotation=45)
+
+            # Format x-axis
+            if len(filtered_df) > 0:
+                from matplotlib.dates import AutoDateLocator
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
+                plt.xticks(rotation=45)
+
             plt.tight_layout()
-            
-            plots.append(('Temperature Trends', fig))
+            plots.append(('Temperature vs Time (Filtered)', fig))
         else:
             plt.close(fig)
-    
-    # Pressure plot
-    pressure_cols = [col for col in df.columns if 
-                    any(press_word in col.lower() for press_word in ['pr', 'pressure', 'headpr', 'sucpr'])]
-    
-    if pressure_cols and 'parsed_datetime' in df_plot.columns:
+
+    # Pressure vs Time Plot
+    pressure_indices = filtered_mapping['suctionPressures'] + filtered_mapping['dischargePressures']
+
+    if pressure_indices and 'parsed_datetime' in filtered_df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
-        colors = plt.cm.tab10(np.linspace(0, 1, min(len(pressure_cols), max_series)))
-        
-        plotted_count = 0
-        for col in pressure_cols[:max_series]:
-            try:
-                pressure_data = pd.to_numeric(df_plot[col], errors='coerce')
-                valid_mask = ~pressure_data.isna() & ~df_plot['parsed_datetime'].isna()
-                
+        colors = ['darkblue', 'darkred', 'darkgreen', 'darkorange', 'purple', 'brown']
+
+        plotted_any = False
+        for idx_num, idx in enumerate(pressure_indices[:6]):
+            if idx < len(filtered_headers):
+                pressure_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
+                valid_mask = ~pressure_data.isna() & ~filtered_df['parsed_datetime'].isna()
+
                 if valid_mask.sum() > 0:
-                    ax.plot(df_plot.loc[valid_mask, 'parsed_datetime'],
+                    ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
                            pressure_data[valid_mask],
-                           label=col[:20],
-                           color=colors[plotted_count],
+                           label=get_legend_label(filtered_headers[idx]),
+                           marker='o',
+                           markersize=2,
                            linewidth=1,
-                           alpha=0.8)
-                    plotted_count += 1
-            except Exception as e:
-                continue
-        
-        if plotted_count > 0:
+                           color=colors[idx_num % len(colors)])
+                    plotted_any = True
+
+        if plotted_any:
             ax.set_xlabel('Time')
             ax.set_ylabel('Pressure (PSI)')
-            ax.set_title('Pressure Trends Over Time')
+            ax.set_title('Pressure vs Time (Filtered Data)')
             ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             ax.grid(True, alpha=0.3)
-            
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
-            plt.xticks(rotation=45)
+
+            # Format x-axis
+            if len(filtered_df) > 0:
+                from matplotlib.dates import AutoDateLocator
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
+                ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
+                plt.xticks(rotation=45)
+
             plt.tight_layout()
-            
-            plots.append(('Pressure Trends', fig))
+            plots.append(('Pressure vs Time (Filtered)', fig))
         else:
             plt.close(fig)
-    
-    return plots
 
-def generate_summary_stats(df):
-    """Generate summary statistics for the dataset"""
-    if df is None or len(df) == 0:
-        return [['No data available']]
-    
-    # Filter numeric columns
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    numeric_cols = [col for col in numeric_cols if col != 'parsed_datetime']
-    
-    if not numeric_cols:
-        return [['No numeric data available']]
-    
-    stats_data = [['Parameter', 'Count', 'Mean', 'Min', 'Max', 'Std Dev']]
-    
-    for col in numeric_cols[:20]:  # Limit to first 20 columns
-        try:
-            series = df[col].dropna()
-            if len(series) > 0:
-                stats_data.append([
-                    col[:30],  # Truncate long names
-                    str(len(series)),
-                    f"{series.mean():.2f}",
-                    f"{series.min():.2f}",
-                    f"{series.max():.2f}",
-                    f"{series.std():.2f}"
-                ])
-        except Exception:
-            continue
-    
-    return stats_data
-
-# Example usage
-if __name__ == "__main__":
-    # Test with your CSV file
-    file_path = "your_large_file.csv"  # Replace with your file path
-    
-    # Process the CSV
-    df, headers, mapping = process_large_csv(file_path)
-    
-    if df is not None:
-        print(f"Successfully processed {len(df)} rows")
-        print(f"Columns available: {df.columns.tolist()}")
-        
-        # Generate plots
-        plots = create_optimized_plots(df, headers, mapping)
-        print(f"Generated {len(plots)} plots")
-        
-        # Generate summary statistics
-        stats = generate_summary_stats(df)
-        print("Summary statistics generated")
-        
-        # Show plots
-        for title, fig in plots:
-            plt.show()
-    else:
-        print("Failed to process CSV file")
-    
     # Relative Humidity vs Time Plot
 
-
-def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
     indoor_rh_indices = [
         idx for idx in filtered_mapping.get('indoorRH', [])
         if 'sprheat' not in filtered_headers[idx].lower() 
@@ -1788,18 +1560,18 @@ def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
     ]
     outdoor_rh_indices = filtered_mapping.get('outdoorRH', [])
     colors = ['teal', 'magenta', 'olive', 'coral', 'gray', 'gold']
-    
+
     if (indoor_rh_indices or outdoor_rh_indices) and 'parsed_datetime' in filtered_df.columns:
         fig, ax = plt.subplots(figsize=(12, 6))
         plotted_any = False
-        
+
         # Indoor RH
         for idx_num, idx in enumerate(indoor_rh_indices[:3]):
             if idx < len(filtered_headers):
                 rh_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
                 label = get_legend_label(filtered_headers[idx]) + " (Indoor)"
                 valid_mask = ~rh_data.isna() & ~filtered_df['parsed_datetime'].isna()
-                
+
                 if valid_mask.sum() > 0:
                     ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
                            rh_data[valid_mask],
@@ -1807,14 +1579,14 @@ def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
                            color=colors[idx_num % len(colors)],
                            marker='o', linewidth=1, markersize=2)
                     plotted_any = True
-        
+
         # Outdoor RH
         for idx_num, idx in enumerate(outdoor_rh_indices[:3]):
             if idx < len(filtered_headers):
                 rh_data = pd.to_numeric(filtered_df.iloc[:, idx], errors='coerce')
                 label = get_legend_label(filtered_headers[idx]) + " (Outdoor)"
                 valid_mask = ~rh_data.isna() & ~filtered_df['parsed_datetime'].isna()
-                
+
                 if valid_mask.sum() > 0:
                     ax.plot(filtered_df.loc[valid_mask, 'parsed_datetime'],
                            rh_data[valid_mask],
@@ -1823,54 +1595,54 @@ def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
                            color=colors[(idx_num + 3) % len(colors)],
                            marker='x', linewidth=1, markersize=2)
                     plotted_any = True
-        
+
         if plotted_any:
             ax.set_xlabel("Time")
             ax.set_ylabel("Relative Humidity (%)")
             ax.set_title("Relative Humidity vs Time (Filtered Data)")
             ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
             ax.grid(True, alpha=0.3)
-            
+
             # Format x-axis
             if len(filtered_df) > 0:
                 from matplotlib.dates import AutoDateLocator
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d %H:%M'))
                 ax.xaxis.set_major_locator(AutoDateLocator(maxticks=24))
                 plt.xticks(rotation=45)
-            
+
             plt.tight_layout()
             plots.append(('Relative Humidity vs Time (Filtered)', fig))
         else:
             plt.close(fig)
-    
+
     return plots
 
 # Updated analysis function to use filtered data
 def analyze_hvac_data_enhanced_filtered(df, headers, mapping):
     """Enhanced HVAC analysis with filtered data to exclude zero/meaningless columns"""
-    
+
     # Filter the dataframe first
     filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
     filtered_headers = filtered_df.columns.tolist()
-    
+
     # Run the original analysis on filtered data
     issues = analyze_hvac_data_enhanced(filtered_df, filtered_headers, filtered_mapping)
-    
+
     return issues
 
 # Updated comfort check function
 def check_comfort_conditions_filtered(df, headers, mapping):
     """Check indoor comfort conditions with filtered data"""
-    
+
     # Filter the dataframe first
     filtered_df, filtered_mapping = filter_dataframe_for_analysis(df, mapping)
     filtered_headers = filtered_df.columns.tolist()
-    
+
     # Run the original comfort check on filtered data
     results = check_comfort_conditions(filtered_df, filtered_headers, filtered_mapping)
-    
+
     return results
-    
+
 # --- Streamlit App ---
 st.set_page_config(page_title="Enhanced HVAC Data Analysis", layout="wide")
 
@@ -1898,42 +1670,42 @@ if uploaded_files:
     all_dataframes = []
     all_issues = []
     all_file_info = []
-    
+
     # Process each file
     for uploaded_file in uploaded_files:
         try:
             file_extension = uploaded_file.name.lower().split('.')[-1]
-            
+
             if file_extension in ['xlsx', 'xls']:
                 df = pd.read_excel(uploaded_file)
                 st.success(f"✅ Excel file '{uploaded_file.name}' successfully read with {len(df)} rows")
             else:
                 # Read and clean CSV by skipping the second row (units like °F)
-                encodings_to_try = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
-                for encoding in encodings_to_try:
-                    try:
-                        uploaded_file.seek(0)
-                        lines = uploaded_file.read().decode(encoding).splitlines()
-                        if len(lines) > 1:
-                            lines.pop(1) # Remove units row
-                        df = pd.read_csv(StringIO("\n".join(lines)))
-                        break
-                    except Exception:
-                        continue
-        
+                try:
+                    uploaded_file.seek(0)
+                    lines = uploaded_file.read().decode('latin-1').splitlines()
+                    if len(lines) > 1:
+                        lines.pop(1)
+                    cleaned_csv = "\n".join(lines)
+                    df = pd.read_csv(StringIO(cleaned_csv))
+                    st.success(f"✅ Cleaned CSV file '{uploaded_file.name}' successfully read with {len(df)} rows")
+                except Exception as e:
+                    st.error(f"Failed to read and clean '{uploaded_file.name}': {e}")
+                    continue
+
             # Clean the data - skip rows that are all NaN or contain header-like content
             df = df.dropna(how='all')  # Remove completely empty rows
-            
+
             # If the first row contains units (like °F, PSI, etc.), remove it
             if len(df) > 0 and df.iloc[0].astype(str).str.contains('°F|PSI|%|WG', case=False, na=False).any():
                 df = df.iloc[1:].reset_index(drop=True)
                 st.info(f"Removed units row from {uploaded_file.name}")
-            
+
             # Add source file identifier
             df['source_file'] = uploaded_file.name
             all_dataframes.append(df.copy())
             all_file_info.append({'name': uploaded_file.name, 'df': df})
-            
+
             # Analyze each file
             headers = df.columns.tolist()
             mapping = parse_headers_enhanced(headers)
@@ -1941,14 +1713,14 @@ if uploaded_files:
           # Analyze each file
             headers = df.columns.tolist()
             mapping = parse_headers_enhanced(headers)
-            
+
             # Create datetime column
             df = create_datetime_column(df, mapping)
-            
+
             # Show detected columns
             st.subheader(f"🔍 Detected Columns in {uploaded_file.name}")
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 if mapping['suctionPressures']:
                     st.write(f"**Suction Pressures:** {[headers[i] for i in mapping['suctionPressures']]}")
@@ -1956,7 +1728,7 @@ if uploaded_files:
                     st.write(f"**Discharge Pressures:** {[headers[i] for i in mapping['dischargePressures']]}")
                 if mapping['suctionTemps']:
                     st.write(f"**Suction Temps:** {[headers[i] for i in mapping['suctionTemps']]}")
-            
+
             with col2:
                 if mapping['supplyAirTemps']:
                     st.write(f"**Supply Air Temps:** {[headers[i] for i in mapping['supplyAirTemps']]}")
@@ -1964,7 +1736,7 @@ if uploaded_files:
                     st.write(f"**Outdoor Air Temps:** {[headers[i] for i in mapping['outdoorAirTemps']]}")
                 if mapping['indoorTemps']:
                     st.write(f"**Indoor Temps:** {[headers[i] for i in mapping['indoorTemps']]}")
-            
+
             # Analyze issues for this file
             issues = analyze_hvac_data_enhanced_filtered(df, headers, mapping)
             all_issues.extend(issues)
@@ -1992,13 +1764,13 @@ if uploaded_files:
             st.dataframe(pd.DataFrame(summary_data[1:], columns=summary_data[0]))
         else:
             st.info("No meaningful data available for summary statistics.")
-    
+
     # Unified Indoor Comfort Check
     if combined_df is not None:
         combined_mapping = parse_headers_enhanced(combined_headers)
         combined_df = create_datetime_column(combined_df, combined_mapping)
         comfort_results = check_comfort_conditions_filtered(combined_df, combined_headers, combined_mapping)
-    
+
         if comfort_results:
             st.markdown("## 🏠 Indoor Comfort Check")
             for result in comfort_results:
@@ -2015,7 +1787,7 @@ if uploaded_files:
     if combined_df is not None and 'parsed_datetime' not in combined_df.columns:
         combined_mapping = parse_headers_enhanced(combined_headers)
         combined_df = create_datetime_column(combined_df, combined_mapping)
-    
+
     # Add this block to define combined_mapping
     if combined_df is not None:
         combined_mapping = parse_headers_enhanced(combined_headers)
@@ -2030,13 +1802,12 @@ if uploaded_files:
         plt.close(fig)  # Close figure to free memory
 
     # Single unified analysis results
-    st.markdown("## 📋 HVAC Issues Analysis")
     if all_issues:
         # Show summary counts
         high_count = len([i for i in all_issues if i['severity'] == 'high'])
         medium_count = len([i for i in all_issues if i['severity'] == 'medium'])
         low_count = len([i for i in all_issues if i['severity'] == 'low'])
-        
+
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("🔴 High Priority", high_count)
@@ -2081,7 +1852,7 @@ if uploaded_files:
     # Single PDF Report Generation
     st.markdown("## 📄 Generate Unified Report")
     col1, col2 = st.columns(2)
-    
+
     with col1:
         if st.button("📄 Generate PDF Report", type="primary"):
             try:
@@ -2091,7 +1862,7 @@ if uploaded_files:
                     issues=all_issues,
                     df_summary=combined_df
                 )
-                
+
                 if pdf_buffer:
                     st.download_button(
                         label="📥 Download PDF Report",
@@ -2101,11 +1872,11 @@ if uploaded_files:
                     )
                 else:
                     raise Exception("PDF generation failed")
-                    
+
             except Exception as e:
                 st.error(f"Error generating PDF: {str(e)}")
                 st.info("PDF generation requires additional libraries. Falling back to text report.")
-                
+
                 # Fallback to text report
                 report_lines = [
                     f"{project_title} - Project File Analysis",
@@ -2120,12 +1891,12 @@ if uploaded_files:
                     "UNIFIED SYSTEM DATA ANALYSIS FINDINGS:",
                     ""
                 ]
-                
+
                 if all_issues:
                     high_issues = [i for i in all_issues if i.get('severity') == 'high']
                     medium_issues = [i for i in all_issues if i.get('severity') == 'medium']
                     low_issues = [i for i in all_issues if i.get('severity') == 'low']
-                    
+
                     if high_issues:
                         report_lines.extend(["HIGH PRIORITY ISSUES:", "-" * 20])
                         for issue in high_issues:
@@ -2135,7 +1906,7 @@ if uploaded_files:
                                 f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
                                 ""
                             ])
-                    
+
                     if medium_issues:
                         report_lines.extend(["MEDIUM PRIORITY ISSUES:", "-" * 22])
                         for issue in medium_issues:
@@ -2145,7 +1916,7 @@ if uploaded_files:
                                 f"RECOMMENDATIONS: {'; '.join(issue['suggestions'])}",
                                 ""
                             ])
-                    
+
                     if low_issues:
                         report_lines.extend(["LOW PRIORITY ISSUES:", "-" * 19])
                         for issue in low_issues:
@@ -2157,32 +1928,32 @@ if uploaded_files:
                             ])
                 else:
                     report_lines.append("✅ No immediate HVAC issues detected in combined data analysis.")
-                
+
                 report_lines.extend([
                     "",
                     "DATA SOURCES:",
                     "-" * 13
                 ])
-                
+
                 for info in all_file_info:
                     report_lines.append(f"• {info['name']} ({len(info['df'])} data points)")
-                
+
                 report_lines.extend([
                     "",
                     "=" * 50,
                     f"Report generated by {project_title} Analysis System",
                     "For technical support, please contact your HVAC service provider."
                 ])
-                
+
                 report = "\n".join(report_lines)
-                
+
                 st.download_button(
                     "📄 Download Text Report",
                     report,
                     file_name=f"{project_title.replace(' ', '_')}_combined_diagnostics_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                     mime="text/plain"
                 )
-    
+
     with col2:
         st.info(
             "📋 **PDF Report Includes:**\n"
@@ -2196,7 +1967,7 @@ if uploaded_files:
 
 else:
     st.info("👆 Please upload CSV or XLSX files to begin HVAC data analysis")
-    
+
     st.markdown("### 📋 **Expected Data Format**")
     st.markdown("""
     Your CSV and XLSX files should contain columns with names that include:
