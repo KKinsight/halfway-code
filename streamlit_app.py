@@ -1843,7 +1843,7 @@ def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
         else:
             plt.close(fig)
     
-return plots
+    return plots
 
 # Updated analysis function to use filtered data
 def analyze_hvac_data_enhanced_filtered(df, headers, mapping):
