@@ -1779,6 +1779,8 @@ if __name__ == "__main__":
     
     # Relative Humidity vs Time Plot
 
+
+def generate_rh_plots(filtered_df, filtered_headers, filtered_mapping):
     indoor_rh_indices = [
         idx for idx in filtered_mapping.get('indoorRH', [])
         if 'sprheat' not in filtered_headers[idx].lower() 
