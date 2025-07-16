@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from io import StringIO, BytesIO
 from datetime import datetime
+from dateutil import parser
 import base64
 
 # Only import reportlab if available
@@ -94,6 +95,13 @@ def parse_headers_enhanced(headers):
 
     return mapping
 
+
+def robust_datetime_parser(date_str, time_str):
+    try:
+        return parser.parse(f"{date_str} {time_str}")
+    except Exception:
+        return pd.NaT
+
 def create_datetime_column(df, mapping):
     """Create a datetime column from date/time or datetime columns, with support for '31-May' format"""
     try:
@@ -123,8 +131,10 @@ def create_datetime_column(df, mapping):
                 return date_str
 
             date_col = date_col.apply(convert_date)
-            datetime_str = date_col + ' ' + time_col
-            df['parsed_datetime'] = pd.to_datetime(datetime_str, errors='coerce')
+            df['parsed_datetime'] = df.apply(
+                lambda row: robust_datetime_parser(str(row.iloc[mapping['date']]), str(row.iloc[mapping['time']])),
+                axis=1
+            )
         elif mapping['date'] is not None:
             date_col = df.iloc[:, mapping['date']].astype(str).str.strip()
             date_col = date_col.apply(lambda x: convert_date(x) if callable(convert_date) else x)
