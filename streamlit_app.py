@@ -6,7 +6,7 @@ import matplotlib.dates as mdates
 from io import StringIO, BytesIO
 from datetime import datetime
 from dateutil import parser
-import base64
+import base64 
 
 # Only import reportlab if available
 try:
